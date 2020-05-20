@@ -178,7 +178,7 @@ async function parseTemplate () {
     }
 
     deploymentYaml.spec.template.spec.containers.forEach(container => {
-      container.env = env
+      container.env.push(...env)
     })
     deploymentData = await safeDump(deploymentYaml)
   } catch (e) {

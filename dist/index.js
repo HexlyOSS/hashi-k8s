@@ -33796,7 +33796,7 @@ async function parseTemplate () {
     }
 
     deploymentYaml.spec.template.spec.containers.forEach(container => {
-      container.env = env
+      container.env.push(...env)
     })
     deploymentData = await Object(js_yaml.safeDump)(deploymentYaml)
   } catch (e) {
@@ -33835,7 +33835,8 @@ async function parseTemplate () {
   } catch (error) {
     Object(core.setFailed)(error.message);
   }
-})();
+})()
+
 
 /***/ }),
 /* 647 */,
