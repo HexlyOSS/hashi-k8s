@@ -1,0 +1,62 @@
+name: 'Hashi-K8s'
+description: 'Github action to build k8s deployment/secrets from consul and vault'
+inputs:
+  consulUrl:
+    description: 'Consul Agent address'
+    reqiured: true
+  consulPort:
+    description: 'Consul Agent Port'
+    required: true
+  consulSecure:
+    description: 'Use HTTPS for consul communication'
+    required: false
+    default: true
+  consulCa:
+    description: 'Custom CA cert for Consul if needed'
+    require: false
+  consulDatacenter:
+    description: 'Consul datacenter to use'
+    required: false
+    default: 'dc1'
+  consulKey:
+    description: 'Consul key path to use'
+    required: true
+  consulToken:
+    description: 'Consul Token to use for accessing the index'
+    required: false
+  vaultUrl:
+    description: 'Vault address'
+    reqiured: true
+  vaultPort:
+    description: 'Vault Port'
+    required: true
+  vaultSecure:
+    description: 'Use HTTPS for agent communication'
+    required: false
+    default: true
+  vaultSkipVerify:
+    description: 'Skip Vault SSL Certificate Check'
+    required: false
+    default: false
+  vaultSecret:
+    description: 'Vault secret path to use'
+    required: true
+  vaulToken:
+    description: 'Vault Token to use for accessing the secret'
+    required: false
+  vaultRenewToken:
+    desciption: 'Attempt to renew the vautl token after use'
+    required: false
+    default: false
+  preParse:
+    description: 'Pre-parse yaml files with mustache.js using provided values'
+    required: false
+  deploymentFile:
+    description: 'Path to the deployment.yaml file'
+    required: true
+  secretsFile:
+    description: 'Path to the secrets.yaml file'
+    required: true
+runs:
+  using: 'node12'
+  main: 'dist/index.js'
