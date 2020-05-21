@@ -34,7 +34,7 @@ module.exports =
 /******/ 	// the startup function
 /******/ 	function startup() {
 /******/ 		// Load entry module and return exports
-/******/ 		return __webpack_require__(646);
+/******/ 		return __webpack_require__(888);
 /******/ 	};
 /******/ 	// initialize runtime
 /******/ 	runtime(__webpack_require__);
@@ -6311,7 +6311,7 @@ function generateECDSA(curve) {
 
 // Copyright 2015 Joyent, Inc.
 
-var parser = __webpack_require__(200);
+var parser = __webpack_require__(848);
 var signer = __webpack_require__(367);
 var verify = __webpack_require__(805);
 var utils = __webpack_require__(324);
@@ -10361,418 +10361,218 @@ module.exports = {"$id":"query.json#","$schema":"http://json-schema.org/draft-06
 
 /***/ }),
 /* 198 */
-/***/ (function(module, __unusedexports, __webpack_require__) {
+/***/ (function(__unusedmodule, __webpack_exports__, __webpack_require__) {
 
-// Copyright 2016 Joyent, Inc.
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+const getInput = __webpack_require__(369).getInput;
+const mustache = __webpack_require__(681);
+const fs = __webpack_require__(747).promises;
+const yaml = __webpack_require__(416);
 
-module.exports = Certificate;
+async function parseTemplate () {
+  const consulUrl = getInput('consulUrl', { required: true });
+  const consulport = getInput('consulPort', { required: true });
+  const consulSecure = getInput('consulSecure', { required: false });
+  const consulDatacenter = getInput('consulDatacenter', { required: false });
+  const consulToken = getInput('consulToken', { required: false });
+  const consulKey = getInput('consulKey', { required: true });
+  const consulCA = getInput('consulCa', { require: false });
+  const vaultUrl = getInput('vaultUrl', { required: true });
+  const vaultport = getInput('vaultPort', { required: true });
+  const vaultSecure = getInput('vaultSecure', { required: false });
+  const vaultToken = getInput('vaultToken', { required: false });
+  const vaultTokenRenew = getInput('vaultTokenRenew', { requied: false });
+  const vaultSecret = getInput('vaultSecret', { required: true });
+  const vaultSkipVerify = getInput('vaultSkipVerify', { required: false });
+  const preParse = getInput('preParse', { requried: false });
+  const deploymentFile = getInput('deploymentFile', { requried: true });
+  const secretsFile = getInput('secretsFile', { requried: false });
 
-var assert = __webpack_require__(328);
-var Buffer = __webpack_require__(232).Buffer;
-var algs = __webpack_require__(578);
-var crypto = __webpack_require__(417);
-var Fingerprint = __webpack_require__(364);
-var Signature = __webpack_require__(570);
-var errs = __webpack_require__(243);
-var util = __webpack_require__(669);
-var utils = __webpack_require__(940);
-var Key = __webpack_require__(686);
-var PrivateKey = __webpack_require__(112);
-var Identity = __webpack_require__(442);
+  let deploymentOut
+  let secretsOut
+  let vaultValues
+  let consulValues
+  let deploymentData;
+  let secretsData;
+  let secretName;
 
-var formats = {};
-formats['openssh'] = __webpack_require__(697);
-formats['x509'] = __webpack_require__(601);
-formats['pem'] = __webpack_require__(922);
+  try {
+    await fs.stat(deploymentFile)
+    console.log('found deployment file')
+    deploymentOut = `${deploymentFile}.parsed`;
+    deploymentData = await fs.readFile(deploymentFile, 'utf-8')
+  } catch (e) {
+    console.log(`failed to read deployment file (${e.message})`)
+    throw e;
+  }
 
-var CertificateParseError = errs.CertificateParseError;
-var InvalidAlgorithmError = errs.InvalidAlgorithmError;
+  if (secretsFile) {
+    try {
+      await fs.stat(secretsFile)
+      console.log('found secrets file')
+      secretsOut = `${secretsFile}.parsed`;
+      secretsData = await fs.readFile(secretsFile, 'utf-8')
+    } catch (e) {
+      console.log(`failed to read secrets file (${e.message})`)
+      throw e;
+    }
+  }
 
-function Certificate(opts) {
-	assert.object(opts, 'options');
-	assert.arrayOfObject(opts.subjects, 'options.subjects');
-	utils.assertCompatible(opts.subjects[0], Identity, [1, 0],
-	    'options.subjects');
-	utils.assertCompatible(opts.subjectKey, Key, [1, 0],
-	    'options.subjectKey');
-	utils.assertCompatible(opts.issuer, Identity, [1, 0], 'options.issuer');
-	if (opts.issuerKey !== undefined) {
-		utils.assertCompatible(opts.issuerKey, Key, [1, 0],
-		    'options.issuerKey');
-	}
-	assert.object(opts.signatures, 'options.signatures');
-	assert.buffer(opts.serial, 'options.serial');
-	assert.date(opts.validFrom, 'options.validFrom');
-	assert.date(opts.validUntil, 'optons.validUntil');
+  // Load the consul data
+  console.log('connecting to consul');
+  const consul = __webpack_require__(612)({
+    host: consulUrl,
+    port: consulport,
+    secure: consulSecure,
+    ca: [consulCA],
+    defaults: {
+      dc: consulDatacenter | 'dc1',
+      token: consulToken
+    },
+    promisify: true
+  });
 
-	assert.optionalArrayOfString(opts.purposes, 'options.purposes');
+  try {
+    console.log(`getting key values from consul for ${consulKey}`);
 
-	this._hashCache = {};
+    const keys = await consul.kv.get({ key: consulKey, recurse: true });
+    for (const key of keys) {
+      if (key.Key.slice(-1) === '/') {
+        continue;
+      }
+      const keySplit = key.Key.split('/');
+      consulValues[keySplit[keySplit.length - 1]] = key.Value;
+    }
+  } catch (e) {
+    console.log(`trouble getting values from consul (${e.message})`);
+    throw e;
+  }
 
-	this.subjects = opts.subjects;
-	this.issuer = opts.issuer;
-	this.subjectKey = opts.subjectKey;
-	this.issuerKey = opts.issuerKey;
-	this.signatures = opts.signatures;
-	this.serial = opts.serial;
-	this.validFrom = opts.validFrom;
-	this.validUntil = opts.validUntil;
-	this.purposes = opts.purposes;
-}
+  console.log('sucessfully pulled values from consul')
 
-Certificate.formats = formats;
+  // Load the Vault data
+  if (secretsFile) {
+    console.log('connecting to vault')
 
-Certificate.prototype.toBuffer = function (format, options) {
-	if (format === undefined)
-		format = 'x509';
-	assert.string(format, 'format');
-	assert.object(formats[format], 'formats[format]');
-	assert.optionalObject(options, 'options');
+    if (vaultSkipVerify) {
+      process.env.VAULT_SKIP_VERIFY = 'true';
+    }
 
-	return (formats[format].write(this, options));
+    const vault = __webpack_require__(932)({
+      token: vaultToken,
+      endpoint: `${vaultSecure ? 'https://' : 'http://'}${vaultUrl}:${vaultport}`
+    });
+
+    try {
+      console.log(`getting secret values from vault at path ${vaultSecret}`);
+      const keyList = await vault.list(vaultSecret);
+      for (const key of keyList.data.keys) {
+        const keyValue = await vault.read(`${vaultSecret}/${key}`);
+        vaultValues[key] = Buffer.from(keyValue.data.value).toString('base64');
+      }
+    } catch (e) {
+      console.log(`trouble getting values from vault ${e.message}`);
+      throw e;
+    }
+
+    console.log('sucessfully pulled values from vault')
+
+    if (vaultTokenRenew) {
+      try {
+        console.log('renewing vault token');
+        await vault.tokenRenewSelf()
+      } catch (e) {
+        console.log(`failed to renew vault token (${e.message})`);
+        throw e
+      }
+    }
+  }
+
+  // preParse the files if necessary
+  if (preParse) {
+    console.log('pre-parsing templates with provided values')
+    const preParseValues = JSON.parse(preParse)
+    try {
+      deploymentData = mustache.render(deploymentData, preParseValues)
+      if (secretsData) {
+        secretsData = mustache.render(secretsData, preParseValues)
+      }
+    } catch (e) {
+      console.log(`trouble pre-parsing files (${e.message})`)
+      throw e
+    }
+  }
+
+  if (secretsData) {
+    console.log('building secrets data')
+    try {
+      // parse the data into yaml
+      const secretYaml = await yaml.safeLoad(secretsData)
+      secretYaml.data = vaultValues
+      secretName = secretYaml.metadata.name
+      secretsData = await yaml.safeDump(secretYaml)
+    } catch (e) {
+      console.log(`trouble building secrets file (${e.message})`)
+      throw e
+    }
+  }
+
+  console.log('building deployment data')
+  try {
+    const deploymentYaml = await yaml.safeLoad(deploymentData)
+    const containers = deploymentYaml.spec.template.spec.containers || []
+
+    if (containers.length === 0) throw new Error('no containers in deployment')
+
+    const env = []
+    Object.entries(consulValues).forEach(([key, value]) => {
+      env.push({ name: key, value: value })
+    })
+
+    if (secretsData) {
+      Object.entries(vaultValues).forEach(([key]) => {
+        env.push({
+          name: key,
+          valueFrom: {
+            secretKeyRef: {
+              name: secretName,
+              key: key
+            }
+          }
+        })
+      })
+    }
+
+    deploymentYaml.spec.template.spec.containers.forEach(container => {
+      container.env.push(...env)
+    })
+    deploymentData = await yaml.safeDump(deploymentYaml)
+  } catch (e) {
+    console.log(`trouble building deployment file )${e.message})`)
+    throw e
+  }
+
+  console.log(`Writing output file ${deploymentOut}`);
+  try {
+    await fs.writeFile(deploymentOut, deploymentData);
+  } catch (e) {
+    console.log(`trouble writing deployment file (${e.message})`);
+    throw e
+  }
+
+  if (secretsData) {
+    console.log(`Writing output file ${secretsOut}`);
+    try {
+      await fs.writeFile(secretsOut, secretsData);
+    } catch (e) {
+      console.log(`trouble writing deployment file (${e.message})`);
+      throw e
+    }
+  }
 };
 
-Certificate.prototype.toString = function (format, options) {
-	if (format === undefined)
-		format = 'pem';
-	return (this.toBuffer(format, options).toString());
-};
-
-Certificate.prototype.fingerprint = function (algo) {
-	if (algo === undefined)
-		algo = 'sha256';
-	assert.string(algo, 'algorithm');
-	var opts = {
-		type: 'certificate',
-		hash: this.hash(algo),
-		algorithm: algo
-	};
-	return (new Fingerprint(opts));
-};
-
-Certificate.prototype.hash = function (algo) {
-	assert.string(algo, 'algorithm');
-	algo = algo.toLowerCase();
-	if (algs.hashAlgs[algo] === undefined)
-		throw (new InvalidAlgorithmError(algo));
-
-	if (this._hashCache[algo])
-		return (this._hashCache[algo]);
-
-	var hash = crypto.createHash(algo).
-	    update(this.toBuffer('x509')).digest();
-	this._hashCache[algo] = hash;
-	return (hash);
-};
-
-Certificate.prototype.isExpired = function (when) {
-	if (when === undefined)
-		when = new Date();
-	return (!((when.getTime() >= this.validFrom.getTime()) &&
-		(when.getTime() < this.validUntil.getTime())));
-};
-
-Certificate.prototype.isSignedBy = function (issuerCert) {
-	utils.assertCompatible(issuerCert, Certificate, [1, 0], 'issuer');
-
-	if (!this.issuer.equals(issuerCert.subjects[0]))
-		return (false);
-	if (this.issuer.purposes && this.issuer.purposes.length > 0 &&
-	    this.issuer.purposes.indexOf('ca') === -1) {
-		return (false);
-	}
-
-	return (this.isSignedByKey(issuerCert.subjectKey));
-};
-
-Certificate.prototype.getExtension = function (keyOrOid) {
-	assert.string(keyOrOid, 'keyOrOid');
-	var ext = this.getExtensions().filter(function (maybeExt) {
-		if (maybeExt.format === 'x509')
-			return (maybeExt.oid === keyOrOid);
-		if (maybeExt.format === 'openssh')
-			return (maybeExt.name === keyOrOid);
-		return (false);
-	})[0];
-	return (ext);
-};
-
-Certificate.prototype.getExtensions = function () {
-	var exts = [];
-	var x509 = this.signatures.x509;
-	if (x509 && x509.extras && x509.extras.exts) {
-		x509.extras.exts.forEach(function (ext) {
-			ext.format = 'x509';
-			exts.push(ext);
-		});
-	}
-	var openssh = this.signatures.openssh;
-	if (openssh && openssh.exts) {
-		openssh.exts.forEach(function (ext) {
-			ext.format = 'openssh';
-			exts.push(ext);
-		});
-	}
-	return (exts);
-};
-
-Certificate.prototype.isSignedByKey = function (issuerKey) {
-	utils.assertCompatible(issuerKey, Key, [1, 2], 'issuerKey');
-
-	if (this.issuerKey !== undefined) {
-		return (this.issuerKey.
-		    fingerprint('sha512').matches(issuerKey));
-	}
-
-	var fmt = Object.keys(this.signatures)[0];
-	var valid = formats[fmt].verify(this, issuerKey);
-	if (valid)
-		this.issuerKey = issuerKey;
-	return (valid);
-};
-
-Certificate.prototype.signWith = function (key) {
-	utils.assertCompatible(key, PrivateKey, [1, 2], 'key');
-	var fmts = Object.keys(formats);
-	var didOne = false;
-	for (var i = 0; i < fmts.length; ++i) {
-		if (fmts[i] !== 'pem') {
-			var ret = formats[fmts[i]].sign(this, key);
-			if (ret === true)
-				didOne = true;
-		}
-	}
-	if (!didOne) {
-		throw (new Error('Failed to sign the certificate for any ' +
-		    'available certificate formats'));
-	}
-};
-
-Certificate.createSelfSigned = function (subjectOrSubjects, key, options) {
-	var subjects;
-	if (Array.isArray(subjectOrSubjects))
-		subjects = subjectOrSubjects;
-	else
-		subjects = [subjectOrSubjects];
-
-	assert.arrayOfObject(subjects);
-	subjects.forEach(function (subject) {
-		utils.assertCompatible(subject, Identity, [1, 0], 'subject');
-	});
-
-	utils.assertCompatible(key, PrivateKey, [1, 2], 'private key');
-
-	assert.optionalObject(options, 'options');
-	if (options === undefined)
-		options = {};
-	assert.optionalObject(options.validFrom, 'options.validFrom');
-	assert.optionalObject(options.validUntil, 'options.validUntil');
-	var validFrom = options.validFrom;
-	var validUntil = options.validUntil;
-	if (validFrom === undefined)
-		validFrom = new Date();
-	if (validUntil === undefined) {
-		assert.optionalNumber(options.lifetime, 'options.lifetime');
-		var lifetime = options.lifetime;
-		if (lifetime === undefined)
-			lifetime = 10*365*24*3600;
-		validUntil = new Date();
-		validUntil.setTime(validUntil.getTime() + lifetime*1000);
-	}
-	assert.optionalBuffer(options.serial, 'options.serial');
-	var serial = options.serial;
-	if (serial === undefined)
-		serial = Buffer.from('0000000000000001', 'hex');
-
-	var purposes = options.purposes;
-	if (purposes === undefined)
-		purposes = [];
-
-	if (purposes.indexOf('signature') === -1)
-		purposes.push('signature');
-
-	/* Self-signed certs are always CAs. */
-	if (purposes.indexOf('ca') === -1)
-		purposes.push('ca');
-	if (purposes.indexOf('crl') === -1)
-		purposes.push('crl');
-
-	/*
-	 * If we weren't explicitly given any other purposes, do the sensible
-	 * thing and add some basic ones depending on the subject type.
-	 */
-	if (purposes.length <= 3) {
-		var hostSubjects = subjects.filter(function (subject) {
-			return (subject.type === 'host');
-		});
-		var userSubjects = subjects.filter(function (subject) {
-			return (subject.type === 'user');
-		});
-		if (hostSubjects.length > 0) {
-			if (purposes.indexOf('serverAuth') === -1)
-				purposes.push('serverAuth');
-		}
-		if (userSubjects.length > 0) {
-			if (purposes.indexOf('clientAuth') === -1)
-				purposes.push('clientAuth');
-		}
-		if (userSubjects.length > 0 || hostSubjects.length > 0) {
-			if (purposes.indexOf('keyAgreement') === -1)
-				purposes.push('keyAgreement');
-			if (key.type === 'rsa' &&
-			    purposes.indexOf('encryption') === -1)
-				purposes.push('encryption');
-		}
-	}
-
-	var cert = new Certificate({
-		subjects: subjects,
-		issuer: subjects[0],
-		subjectKey: key.toPublic(),
-		issuerKey: key.toPublic(),
-		signatures: {},
-		serial: serial,
-		validFrom: validFrom,
-		validUntil: validUntil,
-		purposes: purposes
-	});
-	cert.signWith(key);
-
-	return (cert);
-};
-
-Certificate.create =
-    function (subjectOrSubjects, key, issuer, issuerKey, options) {
-	var subjects;
-	if (Array.isArray(subjectOrSubjects))
-		subjects = subjectOrSubjects;
-	else
-		subjects = [subjectOrSubjects];
-
-	assert.arrayOfObject(subjects);
-	subjects.forEach(function (subject) {
-		utils.assertCompatible(subject, Identity, [1, 0], 'subject');
-	});
-
-	utils.assertCompatible(key, Key, [1, 0], 'key');
-	if (PrivateKey.isPrivateKey(key))
-		key = key.toPublic();
-	utils.assertCompatible(issuer, Identity, [1, 0], 'issuer');
-	utils.assertCompatible(issuerKey, PrivateKey, [1, 2], 'issuer key');
-
-	assert.optionalObject(options, 'options');
-	if (options === undefined)
-		options = {};
-	assert.optionalObject(options.validFrom, 'options.validFrom');
-	assert.optionalObject(options.validUntil, 'options.validUntil');
-	var validFrom = options.validFrom;
-	var validUntil = options.validUntil;
-	if (validFrom === undefined)
-		validFrom = new Date();
-	if (validUntil === undefined) {
-		assert.optionalNumber(options.lifetime, 'options.lifetime');
-		var lifetime = options.lifetime;
-		if (lifetime === undefined)
-			lifetime = 10*365*24*3600;
-		validUntil = new Date();
-		validUntil.setTime(validUntil.getTime() + lifetime*1000);
-	}
-	assert.optionalBuffer(options.serial, 'options.serial');
-	var serial = options.serial;
-	if (serial === undefined)
-		serial = Buffer.from('0000000000000001', 'hex');
-
-	var purposes = options.purposes;
-	if (purposes === undefined)
-		purposes = [];
-
-	if (purposes.indexOf('signature') === -1)
-		purposes.push('signature');
-
-	if (options.ca === true) {
-		if (purposes.indexOf('ca') === -1)
-			purposes.push('ca');
-		if (purposes.indexOf('crl') === -1)
-			purposes.push('crl');
-	}
-
-	var hostSubjects = subjects.filter(function (subject) {
-		return (subject.type === 'host');
-	});
-	var userSubjects = subjects.filter(function (subject) {
-		return (subject.type === 'user');
-	});
-	if (hostSubjects.length > 0) {
-		if (purposes.indexOf('serverAuth') === -1)
-			purposes.push('serverAuth');
-	}
-	if (userSubjects.length > 0) {
-		if (purposes.indexOf('clientAuth') === -1)
-			purposes.push('clientAuth');
-	}
-	if (userSubjects.length > 0 || hostSubjects.length > 0) {
-		if (purposes.indexOf('keyAgreement') === -1)
-			purposes.push('keyAgreement');
-		if (key.type === 'rsa' &&
-		    purposes.indexOf('encryption') === -1)
-			purposes.push('encryption');
-	}
-
-	var cert = new Certificate({
-		subjects: subjects,
-		issuer: issuer,
-		subjectKey: key,
-		issuerKey: issuerKey.toPublic(),
-		signatures: {},
-		serial: serial,
-		validFrom: validFrom,
-		validUntil: validUntil,
-		purposes: purposes
-	});
-	cert.signWith(issuerKey);
-
-	return (cert);
-};
-
-Certificate.parse = function (data, format, options) {
-	if (typeof (data) !== 'string')
-		assert.buffer(data, 'data');
-	if (format === undefined)
-		format = 'auto';
-	assert.string(format, 'format');
-	if (typeof (options) === 'string')
-		options = { filename: options };
-	assert.optionalObject(options, 'options');
-	if (options === undefined)
-		options = {};
-	assert.optionalString(options.filename, 'options.filename');
-	if (options.filename === undefined)
-		options.filename = '(unnamed)';
-
-	assert.object(formats[format], 'formats[format]');
-
-	try {
-		var k = formats[format].read(data, options);
-		return (k);
-	} catch (e) {
-		throw (new CertificateParseError(options.filename, format, e));
-	}
-};
-
-Certificate.isCertificate = function (obj, ver) {
-	return (utils.isCompatible(obj, Certificate, ver));
-};
-
-/*
- * API versions for Certificate:
- * [1,0] -- initial ver
- * [1,1] -- openssh format now unpacks extensions
- */
-Certificate.prototype._sshpkApiVersion = [1, 1];
-
-Certificate._oldVersionDetect = function (obj) {
-	return ([1, 0]);
-};
+/* harmony default export */ __webpack_exports__["default"] = ({ parseTemplate });
 
 
 /***/ }),
@@ -10849,327 +10649,7 @@ module.exports.httpify = function (resp, headers) {
 
 
 /***/ }),
-/* 200 */
-/***/ (function(module, __unusedexports, __webpack_require__) {
-
-// Copyright 2012 Joyent, Inc.  All rights reserved.
-
-var assert = __webpack_require__(328);
-var util = __webpack_require__(669);
-var utils = __webpack_require__(324);
-
-
-
-///--- Globals
-
-var HASH_ALGOS = utils.HASH_ALGOS;
-var PK_ALGOS = utils.PK_ALGOS;
-var HttpSignatureError = utils.HttpSignatureError;
-var InvalidAlgorithmError = utils.InvalidAlgorithmError;
-var validateAlgorithm = utils.validateAlgorithm;
-
-var State = {
-  New: 0,
-  Params: 1
-};
-
-var ParamsState = {
-  Name: 0,
-  Quote: 1,
-  Value: 2,
-  Comma: 3
-};
-
-
-///--- Specific Errors
-
-
-function ExpiredRequestError(message) {
-  HttpSignatureError.call(this, message, ExpiredRequestError);
-}
-util.inherits(ExpiredRequestError, HttpSignatureError);
-
-
-function InvalidHeaderError(message) {
-  HttpSignatureError.call(this, message, InvalidHeaderError);
-}
-util.inherits(InvalidHeaderError, HttpSignatureError);
-
-
-function InvalidParamsError(message) {
-  HttpSignatureError.call(this, message, InvalidParamsError);
-}
-util.inherits(InvalidParamsError, HttpSignatureError);
-
-
-function MissingHeaderError(message) {
-  HttpSignatureError.call(this, message, MissingHeaderError);
-}
-util.inherits(MissingHeaderError, HttpSignatureError);
-
-function StrictParsingError(message) {
-  HttpSignatureError.call(this, message, StrictParsingError);
-}
-util.inherits(StrictParsingError, HttpSignatureError);
-
-///--- Exported API
-
-module.exports = {
-
-  /**
-   * Parses the 'Authorization' header out of an http.ServerRequest object.
-   *
-   * Note that this API will fully validate the Authorization header, and throw
-   * on any error.  It will not however check the signature, or the keyId format
-   * as those are specific to your environment.  You can use the options object
-   * to pass in extra constraints.
-   *
-   * As a response object you can expect this:
-   *
-   *     {
-   *       "scheme": "Signature",
-   *       "params": {
-   *         "keyId": "foo",
-   *         "algorithm": "rsa-sha256",
-   *         "headers": [
-   *           "date" or "x-date",
-   *           "digest"
-   *         ],
-   *         "signature": "base64"
-   *       },
-   *       "signingString": "ready to be passed to crypto.verify()"
-   *     }
-   *
-   * @param {Object} request an http.ServerRequest.
-   * @param {Object} options an optional options object with:
-   *                   - clockSkew: allowed clock skew in seconds (default 300).
-   *                   - headers: required header names (def: date or x-date)
-   *                   - algorithms: algorithms to support (default: all).
-   *                   - strict: should enforce latest spec parsing
-   *                             (default: false).
-   * @return {Object} parsed out object (see above).
-   * @throws {TypeError} on invalid input.
-   * @throws {InvalidHeaderError} on an invalid Authorization header error.
-   * @throws {InvalidParamsError} if the params in the scheme are invalid.
-   * @throws {MissingHeaderError} if the params indicate a header not present,
-   *                              either in the request headers from the params,
-   *                              or not in the params from a required header
-   *                              in options.
-   * @throws {StrictParsingError} if old attributes are used in strict parsing
-   *                              mode.
-   * @throws {ExpiredRequestError} if the value of date or x-date exceeds skew.
-   */
-  parseRequest: function parseRequest(request, options) {
-    assert.object(request, 'request');
-    assert.object(request.headers, 'request.headers');
-    if (options === undefined) {
-      options = {};
-    }
-    if (options.headers === undefined) {
-      options.headers = [request.headers['x-date'] ? 'x-date' : 'date'];
-    }
-    assert.object(options, 'options');
-    assert.arrayOfString(options.headers, 'options.headers');
-    assert.optionalFinite(options.clockSkew, 'options.clockSkew');
-
-    var authzHeaderName = options.authorizationHeaderName || 'authorization';
-
-    if (!request.headers[authzHeaderName]) {
-      throw new MissingHeaderError('no ' + authzHeaderName + ' header ' +
-                                   'present in the request');
-    }
-
-    options.clockSkew = options.clockSkew || 300;
-
-
-    var i = 0;
-    var state = State.New;
-    var substate = ParamsState.Name;
-    var tmpName = '';
-    var tmpValue = '';
-
-    var parsed = {
-      scheme: '',
-      params: {},
-      signingString: ''
-    };
-
-    var authz = request.headers[authzHeaderName];
-    for (i = 0; i < authz.length; i++) {
-      var c = authz.charAt(i);
-
-      switch (Number(state)) {
-
-      case State.New:
-        if (c !== ' ') parsed.scheme += c;
-        else state = State.Params;
-        break;
-
-      case State.Params:
-        switch (Number(substate)) {
-
-        case ParamsState.Name:
-          var code = c.charCodeAt(0);
-          // restricted name of A-Z / a-z
-          if ((code >= 0x41 && code <= 0x5a) || // A-Z
-              (code >= 0x61 && code <= 0x7a)) { // a-z
-            tmpName += c;
-          } else if (c === '=') {
-            if (tmpName.length === 0)
-              throw new InvalidHeaderError('bad param format');
-            substate = ParamsState.Quote;
-          } else {
-            throw new InvalidHeaderError('bad param format');
-          }
-          break;
-
-        case ParamsState.Quote:
-          if (c === '"') {
-            tmpValue = '';
-            substate = ParamsState.Value;
-          } else {
-            throw new InvalidHeaderError('bad param format');
-          }
-          break;
-
-        case ParamsState.Value:
-          if (c === '"') {
-            parsed.params[tmpName] = tmpValue;
-            substate = ParamsState.Comma;
-          } else {
-            tmpValue += c;
-          }
-          break;
-
-        case ParamsState.Comma:
-          if (c === ',') {
-            tmpName = '';
-            substate = ParamsState.Name;
-          } else {
-            throw new InvalidHeaderError('bad param format');
-          }
-          break;
-
-        default:
-          throw new Error('Invalid substate');
-        }
-        break;
-
-      default:
-        throw new Error('Invalid substate');
-      }
-
-    }
-
-    if (!parsed.params.headers || parsed.params.headers === '') {
-      if (request.headers['x-date']) {
-        parsed.params.headers = ['x-date'];
-      } else {
-        parsed.params.headers = ['date'];
-      }
-    } else {
-      parsed.params.headers = parsed.params.headers.split(' ');
-    }
-
-    // Minimally validate the parsed object
-    if (!parsed.scheme || parsed.scheme !== 'Signature')
-      throw new InvalidHeaderError('scheme was not "Signature"');
-
-    if (!parsed.params.keyId)
-      throw new InvalidHeaderError('keyId was not specified');
-
-    if (!parsed.params.algorithm)
-      throw new InvalidHeaderError('algorithm was not specified');
-
-    if (!parsed.params.signature)
-      throw new InvalidHeaderError('signature was not specified');
-
-    // Check the algorithm against the official list
-    parsed.params.algorithm = parsed.params.algorithm.toLowerCase();
-    try {
-      validateAlgorithm(parsed.params.algorithm);
-    } catch (e) {
-      if (e instanceof InvalidAlgorithmError)
-        throw (new InvalidParamsError(parsed.params.algorithm + ' is not ' +
-          'supported'));
-      else
-        throw (e);
-    }
-
-    // Build the signingString
-    for (i = 0; i < parsed.params.headers.length; i++) {
-      var h = parsed.params.headers[i].toLowerCase();
-      parsed.params.headers[i] = h;
-
-      if (h === 'request-line') {
-        if (!options.strict) {
-          /*
-           * We allow headers from the older spec drafts if strict parsing isn't
-           * specified in options.
-           */
-          parsed.signingString +=
-            request.method + ' ' + request.url + ' HTTP/' + request.httpVersion;
-        } else {
-          /* Strict parsing doesn't allow older draft headers. */
-          throw (new StrictParsingError('request-line is not a valid header ' +
-            'with strict parsing enabled.'));
-        }
-      } else if (h === '(request-target)') {
-        parsed.signingString +=
-          '(request-target): ' + request.method.toLowerCase() + ' ' +
-          request.url;
-      } else {
-        var value = request.headers[h];
-        if (value === undefined)
-          throw new MissingHeaderError(h + ' was not in the request');
-        parsed.signingString += h + ': ' + value;
-      }
-
-      if ((i + 1) < parsed.params.headers.length)
-        parsed.signingString += '\n';
-    }
-
-    // Check against the constraints
-    var date;
-    if (request.headers.date || request.headers['x-date']) {
-        if (request.headers['x-date']) {
-          date = new Date(request.headers['x-date']);
-        } else {
-          date = new Date(request.headers.date);
-        }
-      var now = new Date();
-      var skew = Math.abs(now.getTime() - date.getTime());
-
-      if (skew > options.clockSkew * 1000) {
-        throw new ExpiredRequestError('clock skew of ' +
-                                      (skew / 1000) +
-                                      's was greater than ' +
-                                      options.clockSkew + 's');
-      }
-    }
-
-    options.headers.forEach(function (hdr) {
-      // Remember that we already checked any headers in the params
-      // were in the request, so if this passes we're good.
-      if (parsed.params.headers.indexOf(hdr.toLowerCase()) < 0)
-        throw new MissingHeaderError(hdr + ' was not a signed header');
-    });
-
-    if (options.algorithms) {
-      if (options.algorithms.indexOf(parsed.params.algorithm) === -1)
-        throw new InvalidParamsError(parsed.params.algorithm +
-                                     ' is not a supported algorithm');
-    }
-
-    parsed.algorithm = parsed.params.algorithm.toUpperCase();
-    parsed.keyId = parsed.params.keyId;
-    return parsed;
-  }
-
-};
-
-
-/***/ }),
+/* 200 */,
 /* 201 */
 /***/ (function(module) {
 
@@ -11994,7 +11474,422 @@ function isLooseTypedArray(arr) {
 /***/ }),
 /* 221 */,
 /* 222 */,
-/* 223 */,
+/* 223 */
+/***/ (function(module, __unusedexports, __webpack_require__) {
+
+// Copyright 2016 Joyent, Inc.
+
+module.exports = Certificate;
+
+var assert = __webpack_require__(328);
+var Buffer = __webpack_require__(232).Buffer;
+var algs = __webpack_require__(578);
+var crypto = __webpack_require__(417);
+var Fingerprint = __webpack_require__(364);
+var Signature = __webpack_require__(570);
+var errs = __webpack_require__(243);
+var util = __webpack_require__(669);
+var utils = __webpack_require__(940);
+var Key = __webpack_require__(686);
+var PrivateKey = __webpack_require__(112);
+var Identity = __webpack_require__(442);
+
+var formats = {};
+formats['openssh'] = __webpack_require__(697);
+formats['x509'] = __webpack_require__(601);
+formats['pem'] = __webpack_require__(922);
+
+var CertificateParseError = errs.CertificateParseError;
+var InvalidAlgorithmError = errs.InvalidAlgorithmError;
+
+function Certificate(opts) {
+	assert.object(opts, 'options');
+	assert.arrayOfObject(opts.subjects, 'options.subjects');
+	utils.assertCompatible(opts.subjects[0], Identity, [1, 0],
+	    'options.subjects');
+	utils.assertCompatible(opts.subjectKey, Key, [1, 0],
+	    'options.subjectKey');
+	utils.assertCompatible(opts.issuer, Identity, [1, 0], 'options.issuer');
+	if (opts.issuerKey !== undefined) {
+		utils.assertCompatible(opts.issuerKey, Key, [1, 0],
+		    'options.issuerKey');
+	}
+	assert.object(opts.signatures, 'options.signatures');
+	assert.buffer(opts.serial, 'options.serial');
+	assert.date(opts.validFrom, 'options.validFrom');
+	assert.date(opts.validUntil, 'optons.validUntil');
+
+	assert.optionalArrayOfString(opts.purposes, 'options.purposes');
+
+	this._hashCache = {};
+
+	this.subjects = opts.subjects;
+	this.issuer = opts.issuer;
+	this.subjectKey = opts.subjectKey;
+	this.issuerKey = opts.issuerKey;
+	this.signatures = opts.signatures;
+	this.serial = opts.serial;
+	this.validFrom = opts.validFrom;
+	this.validUntil = opts.validUntil;
+	this.purposes = opts.purposes;
+}
+
+Certificate.formats = formats;
+
+Certificate.prototype.toBuffer = function (format, options) {
+	if (format === undefined)
+		format = 'x509';
+	assert.string(format, 'format');
+	assert.object(formats[format], 'formats[format]');
+	assert.optionalObject(options, 'options');
+
+	return (formats[format].write(this, options));
+};
+
+Certificate.prototype.toString = function (format, options) {
+	if (format === undefined)
+		format = 'pem';
+	return (this.toBuffer(format, options).toString());
+};
+
+Certificate.prototype.fingerprint = function (algo) {
+	if (algo === undefined)
+		algo = 'sha256';
+	assert.string(algo, 'algorithm');
+	var opts = {
+		type: 'certificate',
+		hash: this.hash(algo),
+		algorithm: algo
+	};
+	return (new Fingerprint(opts));
+};
+
+Certificate.prototype.hash = function (algo) {
+	assert.string(algo, 'algorithm');
+	algo = algo.toLowerCase();
+	if (algs.hashAlgs[algo] === undefined)
+		throw (new InvalidAlgorithmError(algo));
+
+	if (this._hashCache[algo])
+		return (this._hashCache[algo]);
+
+	var hash = crypto.createHash(algo).
+	    update(this.toBuffer('x509')).digest();
+	this._hashCache[algo] = hash;
+	return (hash);
+};
+
+Certificate.prototype.isExpired = function (when) {
+	if (when === undefined)
+		when = new Date();
+	return (!((when.getTime() >= this.validFrom.getTime()) &&
+		(when.getTime() < this.validUntil.getTime())));
+};
+
+Certificate.prototype.isSignedBy = function (issuerCert) {
+	utils.assertCompatible(issuerCert, Certificate, [1, 0], 'issuer');
+
+	if (!this.issuer.equals(issuerCert.subjects[0]))
+		return (false);
+	if (this.issuer.purposes && this.issuer.purposes.length > 0 &&
+	    this.issuer.purposes.indexOf('ca') === -1) {
+		return (false);
+	}
+
+	return (this.isSignedByKey(issuerCert.subjectKey));
+};
+
+Certificate.prototype.getExtension = function (keyOrOid) {
+	assert.string(keyOrOid, 'keyOrOid');
+	var ext = this.getExtensions().filter(function (maybeExt) {
+		if (maybeExt.format === 'x509')
+			return (maybeExt.oid === keyOrOid);
+		if (maybeExt.format === 'openssh')
+			return (maybeExt.name === keyOrOid);
+		return (false);
+	})[0];
+	return (ext);
+};
+
+Certificate.prototype.getExtensions = function () {
+	var exts = [];
+	var x509 = this.signatures.x509;
+	if (x509 && x509.extras && x509.extras.exts) {
+		x509.extras.exts.forEach(function (ext) {
+			ext.format = 'x509';
+			exts.push(ext);
+		});
+	}
+	var openssh = this.signatures.openssh;
+	if (openssh && openssh.exts) {
+		openssh.exts.forEach(function (ext) {
+			ext.format = 'openssh';
+			exts.push(ext);
+		});
+	}
+	return (exts);
+};
+
+Certificate.prototype.isSignedByKey = function (issuerKey) {
+	utils.assertCompatible(issuerKey, Key, [1, 2], 'issuerKey');
+
+	if (this.issuerKey !== undefined) {
+		return (this.issuerKey.
+		    fingerprint('sha512').matches(issuerKey));
+	}
+
+	var fmt = Object.keys(this.signatures)[0];
+	var valid = formats[fmt].verify(this, issuerKey);
+	if (valid)
+		this.issuerKey = issuerKey;
+	return (valid);
+};
+
+Certificate.prototype.signWith = function (key) {
+	utils.assertCompatible(key, PrivateKey, [1, 2], 'key');
+	var fmts = Object.keys(formats);
+	var didOne = false;
+	for (var i = 0; i < fmts.length; ++i) {
+		if (fmts[i] !== 'pem') {
+			var ret = formats[fmts[i]].sign(this, key);
+			if (ret === true)
+				didOne = true;
+		}
+	}
+	if (!didOne) {
+		throw (new Error('Failed to sign the certificate for any ' +
+		    'available certificate formats'));
+	}
+};
+
+Certificate.createSelfSigned = function (subjectOrSubjects, key, options) {
+	var subjects;
+	if (Array.isArray(subjectOrSubjects))
+		subjects = subjectOrSubjects;
+	else
+		subjects = [subjectOrSubjects];
+
+	assert.arrayOfObject(subjects);
+	subjects.forEach(function (subject) {
+		utils.assertCompatible(subject, Identity, [1, 0], 'subject');
+	});
+
+	utils.assertCompatible(key, PrivateKey, [1, 2], 'private key');
+
+	assert.optionalObject(options, 'options');
+	if (options === undefined)
+		options = {};
+	assert.optionalObject(options.validFrom, 'options.validFrom');
+	assert.optionalObject(options.validUntil, 'options.validUntil');
+	var validFrom = options.validFrom;
+	var validUntil = options.validUntil;
+	if (validFrom === undefined)
+		validFrom = new Date();
+	if (validUntil === undefined) {
+		assert.optionalNumber(options.lifetime, 'options.lifetime');
+		var lifetime = options.lifetime;
+		if (lifetime === undefined)
+			lifetime = 10*365*24*3600;
+		validUntil = new Date();
+		validUntil.setTime(validUntil.getTime() + lifetime*1000);
+	}
+	assert.optionalBuffer(options.serial, 'options.serial');
+	var serial = options.serial;
+	if (serial === undefined)
+		serial = Buffer.from('0000000000000001', 'hex');
+
+	var purposes = options.purposes;
+	if (purposes === undefined)
+		purposes = [];
+
+	if (purposes.indexOf('signature') === -1)
+		purposes.push('signature');
+
+	/* Self-signed certs are always CAs. */
+	if (purposes.indexOf('ca') === -1)
+		purposes.push('ca');
+	if (purposes.indexOf('crl') === -1)
+		purposes.push('crl');
+
+	/*
+	 * If we weren't explicitly given any other purposes, do the sensible
+	 * thing and add some basic ones depending on the subject type.
+	 */
+	if (purposes.length <= 3) {
+		var hostSubjects = subjects.filter(function (subject) {
+			return (subject.type === 'host');
+		});
+		var userSubjects = subjects.filter(function (subject) {
+			return (subject.type === 'user');
+		});
+		if (hostSubjects.length > 0) {
+			if (purposes.indexOf('serverAuth') === -1)
+				purposes.push('serverAuth');
+		}
+		if (userSubjects.length > 0) {
+			if (purposes.indexOf('clientAuth') === -1)
+				purposes.push('clientAuth');
+		}
+		if (userSubjects.length > 0 || hostSubjects.length > 0) {
+			if (purposes.indexOf('keyAgreement') === -1)
+				purposes.push('keyAgreement');
+			if (key.type === 'rsa' &&
+			    purposes.indexOf('encryption') === -1)
+				purposes.push('encryption');
+		}
+	}
+
+	var cert = new Certificate({
+		subjects: subjects,
+		issuer: subjects[0],
+		subjectKey: key.toPublic(),
+		issuerKey: key.toPublic(),
+		signatures: {},
+		serial: serial,
+		validFrom: validFrom,
+		validUntil: validUntil,
+		purposes: purposes
+	});
+	cert.signWith(key);
+
+	return (cert);
+};
+
+Certificate.create =
+    function (subjectOrSubjects, key, issuer, issuerKey, options) {
+	var subjects;
+	if (Array.isArray(subjectOrSubjects))
+		subjects = subjectOrSubjects;
+	else
+		subjects = [subjectOrSubjects];
+
+	assert.arrayOfObject(subjects);
+	subjects.forEach(function (subject) {
+		utils.assertCompatible(subject, Identity, [1, 0], 'subject');
+	});
+
+	utils.assertCompatible(key, Key, [1, 0], 'key');
+	if (PrivateKey.isPrivateKey(key))
+		key = key.toPublic();
+	utils.assertCompatible(issuer, Identity, [1, 0], 'issuer');
+	utils.assertCompatible(issuerKey, PrivateKey, [1, 2], 'issuer key');
+
+	assert.optionalObject(options, 'options');
+	if (options === undefined)
+		options = {};
+	assert.optionalObject(options.validFrom, 'options.validFrom');
+	assert.optionalObject(options.validUntil, 'options.validUntil');
+	var validFrom = options.validFrom;
+	var validUntil = options.validUntil;
+	if (validFrom === undefined)
+		validFrom = new Date();
+	if (validUntil === undefined) {
+		assert.optionalNumber(options.lifetime, 'options.lifetime');
+		var lifetime = options.lifetime;
+		if (lifetime === undefined)
+			lifetime = 10*365*24*3600;
+		validUntil = new Date();
+		validUntil.setTime(validUntil.getTime() + lifetime*1000);
+	}
+	assert.optionalBuffer(options.serial, 'options.serial');
+	var serial = options.serial;
+	if (serial === undefined)
+		serial = Buffer.from('0000000000000001', 'hex');
+
+	var purposes = options.purposes;
+	if (purposes === undefined)
+		purposes = [];
+
+	if (purposes.indexOf('signature') === -1)
+		purposes.push('signature');
+
+	if (options.ca === true) {
+		if (purposes.indexOf('ca') === -1)
+			purposes.push('ca');
+		if (purposes.indexOf('crl') === -1)
+			purposes.push('crl');
+	}
+
+	var hostSubjects = subjects.filter(function (subject) {
+		return (subject.type === 'host');
+	});
+	var userSubjects = subjects.filter(function (subject) {
+		return (subject.type === 'user');
+	});
+	if (hostSubjects.length > 0) {
+		if (purposes.indexOf('serverAuth') === -1)
+			purposes.push('serverAuth');
+	}
+	if (userSubjects.length > 0) {
+		if (purposes.indexOf('clientAuth') === -1)
+			purposes.push('clientAuth');
+	}
+	if (userSubjects.length > 0 || hostSubjects.length > 0) {
+		if (purposes.indexOf('keyAgreement') === -1)
+			purposes.push('keyAgreement');
+		if (key.type === 'rsa' &&
+		    purposes.indexOf('encryption') === -1)
+			purposes.push('encryption');
+	}
+
+	var cert = new Certificate({
+		subjects: subjects,
+		issuer: issuer,
+		subjectKey: key,
+		issuerKey: issuerKey.toPublic(),
+		signatures: {},
+		serial: serial,
+		validFrom: validFrom,
+		validUntil: validUntil,
+		purposes: purposes
+	});
+	cert.signWith(issuerKey);
+
+	return (cert);
+};
+
+Certificate.parse = function (data, format, options) {
+	if (typeof (data) !== 'string')
+		assert.buffer(data, 'data');
+	if (format === undefined)
+		format = 'auto';
+	assert.string(format, 'format');
+	if (typeof (options) === 'string')
+		options = { filename: options };
+	assert.optionalObject(options, 'options');
+	if (options === undefined)
+		options = {};
+	assert.optionalString(options.filename, 'options.filename');
+	if (options.filename === undefined)
+		options.filename = '(unnamed)';
+
+	assert.object(formats[format], 'formats[format]');
+
+	try {
+		var k = formats[format].read(data, options);
+		return (k);
+	} catch (e) {
+		throw (new CertificateParseError(options.filename, format, e));
+	}
+};
+
+Certificate.isCertificate = function (obj, ver) {
+	return (utils.isCompatible(obj, Certificate, ver));
+};
+
+/*
+ * API versions for Certificate:
+ * [1,0] -- initial ver
+ * [1,1] -- openssh format now unpacks extensions
+ */
+Certificate.prototype._sshpkApiVersion = [1, 1];
+
+Certificate._oldVersionDetect = function (obj) {
+	return ([1, 0]);
+};
+
+
+/***/ }),
 /* 224 */,
 /* 225 */,
 /* 226 */,
@@ -12002,7 +11897,7 @@ function isLooseTypedArray(arr) {
 /* 228 */
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
-var Symbol = __webpack_require__(848);
+var Symbol = __webpack_require__(646);
 
 /** Used for built-in method references. */
 var objectProto = Object.prototype;
@@ -18715,7 +18610,7 @@ var crypto = __webpack_require__(417);
 var errs = __webpack_require__(243);
 var Key = __webpack_require__(686);
 var PrivateKey = __webpack_require__(112);
-var Certificate = __webpack_require__(198);
+var Certificate = __webpack_require__(223);
 var utils = __webpack_require__(940);
 
 var FingerprintFormatError = errs.FingerprintFormatError;
@@ -24125,7 +24020,7 @@ var Key = __webpack_require__(686);
 var Fingerprint = __webpack_require__(364);
 var Signature = __webpack_require__(570);
 var PrivateKey = __webpack_require__(112);
-var Certificate = __webpack_require__(198);
+var Certificate = __webpack_require__(223);
 var Identity = __webpack_require__(442);
 var errs = __webpack_require__(243);
 
@@ -28872,7 +28767,7 @@ var PrivateKey = __webpack_require__(112);
 var pem = __webpack_require__(594);
 var Identity = __webpack_require__(442);
 var Signature = __webpack_require__(570);
-var Certificate = __webpack_require__(198);
+var Certificate = __webpack_require__(223);
 var pkcs8 = __webpack_require__(301);
 
 /*
@@ -33598,244 +33493,14 @@ module.exports = function generate_comment(it, $keyword, $ruleType) {
 /* 644 */,
 /* 645 */,
 /* 646 */
-/***/ (function(__unusedmodule, __webpack_exports__, __webpack_require__) {
+/***/ (function(module, __unusedexports, __webpack_require__) {
 
-"use strict";
-__webpack_require__.r(__webpack_exports__);
+var root = __webpack_require__(58);
 
-// EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
-var core = __webpack_require__(369);
+/** Built-in value references. */
+var Symbol = root.Symbol;
 
-// EXTERNAL MODULE: ./node_modules/mustache/mustache.js
-var mustache = __webpack_require__(681);
-
-// EXTERNAL MODULE: external "fs"
-var external_fs_ = __webpack_require__(747);
-
-// EXTERNAL MODULE: ./node_modules/js-yaml/index.js
-var js_yaml = __webpack_require__(416);
-
-// CONCATENATED MODULE: ./action.js
-
-
-
-
-
-async function parseTemplate () {
-  const consulUrl = Object(core.getInput)('consulUrl', { required: true });
-  const consulport = Object(core.getInput)('consulPort', { required: true });
-  const consulSecure = Object(core.getInput)('consulSecure', { required: false });
-  const consulDatacenter = Object(core.getInput)('consulDatacenter', { required: false });
-  const consulToken = Object(core.getInput)('consulToken', { required: false });
-  const consulKey = Object(core.getInput)('consulKey', { required: true });
-  const consulCA = Object(core.getInput)('consulCa', { require: false });
-  const vaultUrl = Object(core.getInput)('vaultUrl', { required: true });
-  const vaultport = Object(core.getInput)('vaultPort', { required: true });
-  const vaultSecure = Object(core.getInput)('vaultSecure', { required: false });
-  const vaultToken = Object(core.getInput)('vaultToken', { required: false });
-  const vaultTokenRenew = Object(core.getInput)('vaultTokenRenew', { requied: false });
-  const vaultSecret = Object(core.getInput)('vaultSecret', { required: true });
-  const vaultSkipVerify = Object(core.getInput)('vaultSkipVerify', { required: false });
-  const preParse = Object(core.getInput)('preParse', { requried: false });
-  const deploymentFile = Object(core.getInput)('deploymentFile', { requried: true });
-  const secretsFile = Object(core.getInput)('secretsFile', { requried: false });
-
-  let deploymentOut
-  let secretsOut
-  let vaultValues
-  let consulValues
-  let deploymentData;
-  let secretsData;
-  let secretName;
-
-  try {
-    await Object(external_fs_.promises.stat)(deploymentFile)
-    console.log('found deployment file')
-    deploymentOut = `${deploymentFile}.parsed`;
-    deploymentData = await Object(external_fs_.promises.readFile)(deploymentFile, 'utf-8')
-  } catch (e) {
-    console.log(`failed to read deployment file (${e.message})`)
-    throw e;
-  }
-
-  if (secretsFile) {
-    try {
-      await Object(external_fs_.promises.stat)(secretsFile)
-      console.log('found secrets file')
-      secretsOut = `${secretsFile}.parsed`;
-      secretsData = await Object(external_fs_.promises.readFile)(secretsFile, 'utf-8')
-    } catch (e) {
-      console.log(`failed to read secrets file (${e.message})`)
-      throw e;
-    }
-  }
-
-  // Load the consul data
-  console.log('connecting to consul');
-  const consul = __webpack_require__(612)({
-    host: consulUrl,
-    port: consulport,
-    secure: consulSecure,
-    ca: [consulCA],
-    defaults: {
-      dc: consulDatacenter | 'dc1',
-      token: consulToken
-    },
-    promisify: true
-  });
-
-  try {
-    console.log(`getting key values from consul for ${consulKey}`);
-
-    const keys = await consul.kv.get({ key: consulKey, recurse: true });
-    for (const key of keys) {
-      if (key.Key.slice(-1) === '/') {
-        continue;
-      }
-      const keySplit = key.Key.split('/');
-      consulValues[keySplit[keySplit.length - 1]] = key.Value;
-    }
-  } catch (e) {
-    console.log(`trouble getting values from consul (${e.message})`);
-    throw e;
-  }
-
-  console.log('sucessfully pulled values from consul')
-
-  // Load the Vault data
-  if (secretsFile) {
-    console.log('connecting to vault')
-
-    if (vaultSkipVerify) {
-      process.env.VAULT_SKIP_VERIFY = 'true';
-    }
-
-    const vault = __webpack_require__(932)({
-      token: vaultToken,
-      endpoint: `${vaultSecure ? 'https://' : 'http://'}${vaultUrl}:${vaultport}`
-    });
-
-    try {
-      console.log(`getting secret values from vault at path ${vaultSecret}`);
-      const keyList = await vault.list(vaultSecret);
-      for (const key of keyList.data.keys) {
-        const keyValue = await vault.read(`${vaultSecret}/${key}`);
-        vaultValues[key] = Buffer.from(keyValue.data.value).toString('base64');
-      }
-    } catch (e) {
-      console.log(`trouble getting values from vault ${e.message}`);
-      throw e;
-    }
-
-    console.log('sucessfully pulled values from vault')
-
-    if (vaultTokenRenew) {
-      try {
-        console.log('renewing vault token');
-        await vault.tokenRenewSelf()
-      } catch (e) {
-        console.log(`failed to renew vault token (${e.message})`);
-        throw e
-      }
-    }
-  }
-
-  // preParse the files if necessary
-  if (preParse) {
-    console.log('pre-parsing templates with provided values')
-    const preParseValues = JSON.parse(preParse)
-    try {
-      deploymentData = Object(mustache.render)(deploymentData, preParseValues)
-      if (secretsData) {
-        secretsData = Object(mustache.render)(secretsData, preParseValues)
-      }
-    } catch (e) {
-      console.log(`trouble pre-parsing files (${e.message})`)
-      throw e
-    }
-  }
-
-  if (secretsData) {
-    console.log('building secrets data')
-    try {
-      // parse the data into yaml
-      const secretYaml = await Object(js_yaml.safeLoad)(secretsData)
-      secretYaml.data = vaultValues
-      secretName = secretYaml.metadata.name
-      secretsData = await Object(js_yaml.safeDump)(secretYaml)
-    } catch (e) {
-      console.log(`trouble building secrets file (${e.message})`)
-      throw e
-    }
-  }
-
-  console.log('building deployment data')
-  try {
-    const deploymentYaml = await Object(js_yaml.safeLoad)(deploymentData)
-    const containers = deploymentYaml.spec.template.spec.containers || []
-
-    if (containers.length === 0) throw new Error('no containers in deployment')
-
-    const env = []
-    Object.entries(consulValues).forEach(([key, value]) => {
-      env.push({ name: key, value: value })
-    })
-
-    if (secretsData) {
-      Object.entries(vaultValues).forEach(([key]) => {
-        env.push({
-          name: key,
-          valueFrom: {
-            secretKeyRef: {
-              name: secretName,
-              key: key
-            }
-          }
-        })
-      })
-    }
-
-    deploymentYaml.spec.template.spec.containers.forEach(container => {
-      container.env.push(...env)
-    })
-    deploymentData = await Object(js_yaml.safeDump)(deploymentYaml)
-  } catch (e) {
-    console.log(`trouble building deployment file )${e.message})`)
-    throw e
-  }
-
-  console.log(`Writing output file ${deploymentOut}`);
-  try {
-    await Object(external_fs_.promises.writeFile)(deploymentOut, deploymentData);
-  } catch (e) {
-    console.log(`trouble writing deployment file (${e.message})`);
-    throw e
-  }
-
-  if (secretsData) {
-    console.log(`Writing output file ${secretsOut}`);
-    try {
-      await Object(external_fs_.promises.writeFile)(secretsOut, secretsData);
-    } catch (e) {
-      console.log(`trouble writing deployment file (${e.message})`);
-      throw e
-    }
-  }
-};
-
-/* harmony default export */ var action = ({ parseTemplate });
-
-// CONCATENATED MODULE: ./index.js
-
-
-
-(async () => {
-  try {
-    await Object(core.group)('Parse template', /* Cannot get final name for export "parseTemplate" in "./action.js" (known exports: default, known reexports: ) */ undefined);
-  } catch (error) {
-    Object(core.setFailed)(error.message);
-  }
-})()
+module.exports = Symbol;
 
 
 /***/ }),
@@ -35873,7 +35538,7 @@ var Identity = __webpack_require__(442);
 var rfc4253 = __webpack_require__(653);
 var Signature = __webpack_require__(570);
 var utils = __webpack_require__(940);
-var Certificate = __webpack_require__(198);
+var Certificate = __webpack_require__(223);
 
 function verify(cert, key) {
 	/*
@@ -42751,12 +42416,321 @@ module.exports = new Schema({
 /* 848 */
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
-var root = __webpack_require__(58);
+// Copyright 2012 Joyent, Inc.  All rights reserved.
 
-/** Built-in value references. */
-var Symbol = root.Symbol;
+var assert = __webpack_require__(328);
+var util = __webpack_require__(669);
+var utils = __webpack_require__(324);
 
-module.exports = Symbol;
+
+
+///--- Globals
+
+var HASH_ALGOS = utils.HASH_ALGOS;
+var PK_ALGOS = utils.PK_ALGOS;
+var HttpSignatureError = utils.HttpSignatureError;
+var InvalidAlgorithmError = utils.InvalidAlgorithmError;
+var validateAlgorithm = utils.validateAlgorithm;
+
+var State = {
+  New: 0,
+  Params: 1
+};
+
+var ParamsState = {
+  Name: 0,
+  Quote: 1,
+  Value: 2,
+  Comma: 3
+};
+
+
+///--- Specific Errors
+
+
+function ExpiredRequestError(message) {
+  HttpSignatureError.call(this, message, ExpiredRequestError);
+}
+util.inherits(ExpiredRequestError, HttpSignatureError);
+
+
+function InvalidHeaderError(message) {
+  HttpSignatureError.call(this, message, InvalidHeaderError);
+}
+util.inherits(InvalidHeaderError, HttpSignatureError);
+
+
+function InvalidParamsError(message) {
+  HttpSignatureError.call(this, message, InvalidParamsError);
+}
+util.inherits(InvalidParamsError, HttpSignatureError);
+
+
+function MissingHeaderError(message) {
+  HttpSignatureError.call(this, message, MissingHeaderError);
+}
+util.inherits(MissingHeaderError, HttpSignatureError);
+
+function StrictParsingError(message) {
+  HttpSignatureError.call(this, message, StrictParsingError);
+}
+util.inherits(StrictParsingError, HttpSignatureError);
+
+///--- Exported API
+
+module.exports = {
+
+  /**
+   * Parses the 'Authorization' header out of an http.ServerRequest object.
+   *
+   * Note that this API will fully validate the Authorization header, and throw
+   * on any error.  It will not however check the signature, or the keyId format
+   * as those are specific to your environment.  You can use the options object
+   * to pass in extra constraints.
+   *
+   * As a response object you can expect this:
+   *
+   *     {
+   *       "scheme": "Signature",
+   *       "params": {
+   *         "keyId": "foo",
+   *         "algorithm": "rsa-sha256",
+   *         "headers": [
+   *           "date" or "x-date",
+   *           "digest"
+   *         ],
+   *         "signature": "base64"
+   *       },
+   *       "signingString": "ready to be passed to crypto.verify()"
+   *     }
+   *
+   * @param {Object} request an http.ServerRequest.
+   * @param {Object} options an optional options object with:
+   *                   - clockSkew: allowed clock skew in seconds (default 300).
+   *                   - headers: required header names (def: date or x-date)
+   *                   - algorithms: algorithms to support (default: all).
+   *                   - strict: should enforce latest spec parsing
+   *                             (default: false).
+   * @return {Object} parsed out object (see above).
+   * @throws {TypeError} on invalid input.
+   * @throws {InvalidHeaderError} on an invalid Authorization header error.
+   * @throws {InvalidParamsError} if the params in the scheme are invalid.
+   * @throws {MissingHeaderError} if the params indicate a header not present,
+   *                              either in the request headers from the params,
+   *                              or not in the params from a required header
+   *                              in options.
+   * @throws {StrictParsingError} if old attributes are used in strict parsing
+   *                              mode.
+   * @throws {ExpiredRequestError} if the value of date or x-date exceeds skew.
+   */
+  parseRequest: function parseRequest(request, options) {
+    assert.object(request, 'request');
+    assert.object(request.headers, 'request.headers');
+    if (options === undefined) {
+      options = {};
+    }
+    if (options.headers === undefined) {
+      options.headers = [request.headers['x-date'] ? 'x-date' : 'date'];
+    }
+    assert.object(options, 'options');
+    assert.arrayOfString(options.headers, 'options.headers');
+    assert.optionalFinite(options.clockSkew, 'options.clockSkew');
+
+    var authzHeaderName = options.authorizationHeaderName || 'authorization';
+
+    if (!request.headers[authzHeaderName]) {
+      throw new MissingHeaderError('no ' + authzHeaderName + ' header ' +
+                                   'present in the request');
+    }
+
+    options.clockSkew = options.clockSkew || 300;
+
+
+    var i = 0;
+    var state = State.New;
+    var substate = ParamsState.Name;
+    var tmpName = '';
+    var tmpValue = '';
+
+    var parsed = {
+      scheme: '',
+      params: {},
+      signingString: ''
+    };
+
+    var authz = request.headers[authzHeaderName];
+    for (i = 0; i < authz.length; i++) {
+      var c = authz.charAt(i);
+
+      switch (Number(state)) {
+
+      case State.New:
+        if (c !== ' ') parsed.scheme += c;
+        else state = State.Params;
+        break;
+
+      case State.Params:
+        switch (Number(substate)) {
+
+        case ParamsState.Name:
+          var code = c.charCodeAt(0);
+          // restricted name of A-Z / a-z
+          if ((code >= 0x41 && code <= 0x5a) || // A-Z
+              (code >= 0x61 && code <= 0x7a)) { // a-z
+            tmpName += c;
+          } else if (c === '=') {
+            if (tmpName.length === 0)
+              throw new InvalidHeaderError('bad param format');
+            substate = ParamsState.Quote;
+          } else {
+            throw new InvalidHeaderError('bad param format');
+          }
+          break;
+
+        case ParamsState.Quote:
+          if (c === '"') {
+            tmpValue = '';
+            substate = ParamsState.Value;
+          } else {
+            throw new InvalidHeaderError('bad param format');
+          }
+          break;
+
+        case ParamsState.Value:
+          if (c === '"') {
+            parsed.params[tmpName] = tmpValue;
+            substate = ParamsState.Comma;
+          } else {
+            tmpValue += c;
+          }
+          break;
+
+        case ParamsState.Comma:
+          if (c === ',') {
+            tmpName = '';
+            substate = ParamsState.Name;
+          } else {
+            throw new InvalidHeaderError('bad param format');
+          }
+          break;
+
+        default:
+          throw new Error('Invalid substate');
+        }
+        break;
+
+      default:
+        throw new Error('Invalid substate');
+      }
+
+    }
+
+    if (!parsed.params.headers || parsed.params.headers === '') {
+      if (request.headers['x-date']) {
+        parsed.params.headers = ['x-date'];
+      } else {
+        parsed.params.headers = ['date'];
+      }
+    } else {
+      parsed.params.headers = parsed.params.headers.split(' ');
+    }
+
+    // Minimally validate the parsed object
+    if (!parsed.scheme || parsed.scheme !== 'Signature')
+      throw new InvalidHeaderError('scheme was not "Signature"');
+
+    if (!parsed.params.keyId)
+      throw new InvalidHeaderError('keyId was not specified');
+
+    if (!parsed.params.algorithm)
+      throw new InvalidHeaderError('algorithm was not specified');
+
+    if (!parsed.params.signature)
+      throw new InvalidHeaderError('signature was not specified');
+
+    // Check the algorithm against the official list
+    parsed.params.algorithm = parsed.params.algorithm.toLowerCase();
+    try {
+      validateAlgorithm(parsed.params.algorithm);
+    } catch (e) {
+      if (e instanceof InvalidAlgorithmError)
+        throw (new InvalidParamsError(parsed.params.algorithm + ' is not ' +
+          'supported'));
+      else
+        throw (e);
+    }
+
+    // Build the signingString
+    for (i = 0; i < parsed.params.headers.length; i++) {
+      var h = parsed.params.headers[i].toLowerCase();
+      parsed.params.headers[i] = h;
+
+      if (h === 'request-line') {
+        if (!options.strict) {
+          /*
+           * We allow headers from the older spec drafts if strict parsing isn't
+           * specified in options.
+           */
+          parsed.signingString +=
+            request.method + ' ' + request.url + ' HTTP/' + request.httpVersion;
+        } else {
+          /* Strict parsing doesn't allow older draft headers. */
+          throw (new StrictParsingError('request-line is not a valid header ' +
+            'with strict parsing enabled.'));
+        }
+      } else if (h === '(request-target)') {
+        parsed.signingString +=
+          '(request-target): ' + request.method.toLowerCase() + ' ' +
+          request.url;
+      } else {
+        var value = request.headers[h];
+        if (value === undefined)
+          throw new MissingHeaderError(h + ' was not in the request');
+        parsed.signingString += h + ': ' + value;
+      }
+
+      if ((i + 1) < parsed.params.headers.length)
+        parsed.signingString += '\n';
+    }
+
+    // Check against the constraints
+    var date;
+    if (request.headers.date || request.headers['x-date']) {
+        if (request.headers['x-date']) {
+          date = new Date(request.headers['x-date']);
+        } else {
+          date = new Date(request.headers.date);
+        }
+      var now = new Date();
+      var skew = Math.abs(now.getTime() - date.getTime());
+
+      if (skew > options.clockSkew * 1000) {
+        throw new ExpiredRequestError('clock skew of ' +
+                                      (skew / 1000) +
+                                      's was greater than ' +
+                                      options.clockSkew + 's');
+      }
+    }
+
+    options.headers.forEach(function (hdr) {
+      // Remember that we already checked any headers in the params
+      // were in the request, so if this passes we're good.
+      if (parsed.params.headers.indexOf(hdr.toLowerCase()) < 0)
+        throw new MissingHeaderError(hdr + ' was not a signed header');
+    });
+
+    if (options.algorithms) {
+      if (options.algorithms.indexOf(parsed.params.algorithm) === -1)
+        throw new InvalidParamsError(parsed.params.algorithm +
+                                     ' is not a supported algorithm');
+    }
+
+    parsed.algorithm = parsed.params.algorithm.toUpperCase();
+    parsed.keyId = parsed.params.keyId;
+    return parsed;
+  }
+
+};
 
 
 /***/ }),
@@ -45279,7 +45253,23 @@ module.exports = new Type('tag:yaml.org,2002:null', {
 /***/ }),
 /* 886 */,
 /* 887 */,
-/* 888 */,
+/* 888 */
+/***/ (function(__unusedmodule, __unusedexports, __webpack_require__) {
+
+
+const core = __webpack_require__(369);
+const { parseTemplate } = __webpack_require__(198);
+
+(async () => {
+  try {
+    await core.group('Parse template', parseTemplate);
+  } catch (error) {
+    core.setFailed(error.message);
+  }
+})()
+
+
+/***/ }),
 /* 889 */,
 /* 890 */,
 /* 891 */,
@@ -46044,7 +46034,7 @@ var PrivateKey = __webpack_require__(112);
 var pem = __webpack_require__(594);
 var Identity = __webpack_require__(442);
 var Signature = __webpack_require__(570);
-var Certificate = __webpack_require__(198);
+var Certificate = __webpack_require__(223);
 
 function read(buf, options) {
 	if (typeof (buf) !== 'string') {
@@ -47258,7 +47248,7 @@ function write(key, options) {
 /* 954 */
 /***/ (function(module, __unusedexports, __webpack_require__) {
 
-var Symbol = __webpack_require__(848),
+var Symbol = __webpack_require__(646),
     getRawTag = __webpack_require__(228),
     objectToString = __webpack_require__(740);
 
@@ -48984,6 +48974,17 @@ exports.REQUEST_OPTIONS = exports.CLIENT_OPTIONS.concat([
 /******/ function(__webpack_require__) { // webpackRuntimeModules
 /******/ 	"use strict";
 /******/ 
+/******/ 	/* webpack/runtime/make namespace object */
+/******/ 	!function() {
+/******/ 		// define __esModule on exports
+/******/ 		__webpack_require__.r = function(exports) {
+/******/ 			if(typeof Symbol !== 'undefined' && Symbol.toStringTag) {
+/******/ 				Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
+/******/ 			}
+/******/ 			Object.defineProperty(exports, '__esModule', { value: true });
+/******/ 		};
+/******/ 	}();
+/******/ 	
 /******/ 	/* webpack/runtime/node module decorator */
 /******/ 	!function() {
 /******/ 		__webpack_require__.nmd = function(module) {
@@ -48998,59 +48999,6 @@ exports.REQUEST_OPTIONS = exports.CLIENT_OPTIONS.concat([
 /******/ 				get: function() { return module.i; }
 /******/ 			});
 /******/ 			return module;
-/******/ 		};
-/******/ 	}();
-/******/ 	
-/******/ 	/* webpack/runtime/make namespace object */
-/******/ 	!function() {
-/******/ 		// define __esModule on exports
-/******/ 		__webpack_require__.r = function(exports) {
-/******/ 			if(typeof Symbol !== 'undefined' && Symbol.toStringTag) {
-/******/ 				Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
-/******/ 			}
-/******/ 			Object.defineProperty(exports, '__esModule', { value: true });
-/******/ 		};
-/******/ 	}();
-/******/ 	
-/******/ 	/* webpack/runtime/define property getter */
-/******/ 	!function() {
-/******/ 		// define getter function for harmony exports
-/******/ 		var hasOwnProperty = Object.prototype.hasOwnProperty;
-/******/ 		__webpack_require__.d = function(exports, name, getter) {
-/******/ 			if(!hasOwnProperty.call(exports, name)) {
-/******/ 				Object.defineProperty(exports, name, { enumerable: true, get: getter });
-/******/ 			}
-/******/ 		};
-/******/ 	}();
-/******/ 	
-/******/ 	/* webpack/runtime/create fake namespace object */
-/******/ 	!function() {
-/******/ 		// create a fake namespace object
-/******/ 		// mode & 1: value is a module id, require it
-/******/ 		// mode & 2: merge all properties of value into the ns
-/******/ 		// mode & 4: return value when already ns object
-/******/ 		// mode & 8|1: behave like require
-/******/ 		__webpack_require__.t = function(value, mode) {
-/******/ 			if(mode & 1) value = this(value);
-/******/ 			if(mode & 8) return value;
-/******/ 			if((mode & 4) && typeof value === 'object' && value && value.__esModule) return value;
-/******/ 			var ns = Object.create(null);
-/******/ 			__webpack_require__.r(ns);
-/******/ 			Object.defineProperty(ns, 'default', { enumerable: true, value: value });
-/******/ 			if(mode & 2 && typeof value != 'string') for(var key in value) __webpack_require__.d(ns, key, function(key) { return value[key]; }.bind(null, key));
-/******/ 			return ns;
-/******/ 		};
-/******/ 	}();
-/******/ 	
-/******/ 	/* webpack/runtime/compat get default export */
-/******/ 	!function() {
-/******/ 		// getDefaultExport function for compatibility with non-harmony modules
-/******/ 		__webpack_require__.n = function(module) {
-/******/ 			var getter = module && module.__esModule ?
-/******/ 				function getDefault() { return module['default']; } :
-/******/ 				function getModuleExports() { return module; };
-/******/ 			__webpack_require__.d(getter, 'a', getter);
-/******/ 			return getter;
 /******/ 		};
 /******/ 	}();
 /******/ 	

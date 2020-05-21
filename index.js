@@ -1,10 +1,11 @@
-import { group, setFailed } from '@actions/core';
-import { parseTemplate } from './action';
+
+const core = require('@actions/core');
+const { parseTemplate } = require('./action');
 
 (async () => {
   try {
-    await group('Parse template', parseTemplate);
+    await core.group('Parse template', parseTemplate);
   } catch (error) {
-    setFailed(error.message);
+    core.setFailed(error.message);
   }
 })()

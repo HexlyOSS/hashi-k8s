@@ -1,7 +1,7 @@
-import { getInput } from '@actions/core';
-import { render } from 'mustache';
-import { promises as fs } from 'fs';
-import { safeLoad, safeDump } from 'js-yaml';
+const getInput = require('@actions/core').getInput;
+const mustache = require('mustache');
+const fs = require('fs').promises;
+const yaml = require('js-yaml');
 
 async function parseTemplate () {
   const consulUrl = getInput('consulUrl', { required: true });
@@ -127,9 +127,9 @@ async function parseTemplate () {
     console.log('pre-parsing templates with provided values')
     const preParseValues = JSON.parse(preParse)
     try {
-      deploymentData = render(deploymentData, preParseValues)
+      deploymentData = mustache.render(deploymentData, preParseValues)
       if (secretsData) {
-        secretsData = render(secretsData, preParseValues)
+        secretsData = mustache.render(secretsData, preParseValues)
       }
     } catch (e) {
       console.log(`trouble pre-parsing files (${e.message})`)
@@ -141,10 +141,10 @@ async function parseTemplate () {
     console.log('building secrets data')
     try {
       // parse the data into yaml
-      const secretYaml = await safeLoad(secretsData)
+      const secretYaml = await yaml.safeLoad(secretsData)
       secretYaml.data = vaultValues
       secretName = secretYaml.metadata.name
-      secretsData = await safeDump(secretYaml)
+      secretsData = await yaml.safeDump(secretYaml)
     } catch (e) {
       console.log(`trouble building secrets file (${e.message})`)
       throw e
@@ -153,7 +153,7 @@ async function parseTemplate () {
 
   console.log('building deployment data')
   try {
-    const deploymentYaml = await safeLoad(deploymentData)
+    const deploymentYaml = await yaml.safeLoad(deploymentData)
     const containers = deploymentYaml.spec.template.spec.containers || []
 
     if (containers.length === 0) throw new Error('no containers in deployment')
@@ -180,7 +180,7 @@ async function parseTemplate () {
     deploymentYaml.spec.template.spec.containers.forEach(container => {
       container.env.push(...env)
     })
-    deploymentData = await safeDump(deploymentYaml)
+    deploymentData = await yaml.safeDump(deploymentYaml)
   } catch (e) {
     console.log(`trouble building deployment file )${e.message})`)
     throw e

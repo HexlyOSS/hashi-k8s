@@ -41,10 +41,10 @@ inputs:
   vaultSecret:
     description: 'Vault secret path to use'
     required: true
-  vaulToken:
+  vaultToken:
     description: 'Vault Token to use for accessing the secret'
     required: false
-  vaultRenewToken:
+  vaultTokenRenew:
     desciption: 'Attempt to renew the vautl token after use'
     required: false
     default: false
