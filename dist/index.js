@@ -10365,29 +10365,29 @@ module.exports = {"$id":"query.json#","$schema":"http://json-schema.org/draft-06
 
 "use strict";
 __webpack_require__.r(__webpack_exports__);
-const getInput = __webpack_require__(369).getInput;
+const core = __webpack_require__(369);
 const mustache = __webpack_require__(681);
 const fs = __webpack_require__(747).promises;
 const yaml = __webpack_require__(416);
 
 async function parseTemplate () {
-  const consulUrl = getInput('consulUrl', { required: true });
-  const consulport = getInput('consulPort', { required: true });
-  const consulSecure = getInput('consulSecure', { required: false });
-  const consulDatacenter = getInput('consulDatacenter', { required: false });
-  const consulToken = getInput('consulToken', { required: false });
-  const consulKey = getInput('consulKey', { required: true });
-  const consulCA = getInput('consulCa', { require: false });
-  const vaultUrl = getInput('vaultUrl', { required: true });
-  const vaultport = getInput('vaultPort', { required: true });
-  const vaultSecure = getInput('vaultSecure', { required: false });
-  const vaultToken = getInput('vaultToken', { required: false });
-  const vaultTokenRenew = getInput('vaultTokenRenew', { requied: false });
-  const vaultSecret = getInput('vaultSecret', { required: true });
-  const vaultSkipVerify = getInput('vaultSkipVerify', { required: false });
-  const preParse = getInput('preParse', { requried: false });
-  const deploymentFile = getInput('deploymentFile', { requried: true });
-  const secretsFile = getInput('secretsFile', { requried: false });
+  const consulUrl = core.getInput('consulUrl', { required: true });
+  const consulport = core.getInput('consulPort', { required: true });
+  const consulSecure = core.getInput('consulSecure', { required: false });
+  const consulDatacenter = core.getInput('consulDatacenter', { required: false });
+  const consulToken = core.getInput('consulToken', { required: false });
+  const consulKey = core.getInput('consulKey', { required: true });
+  const consulCA = core.getInput('consulCa', { require: false });
+  const vaultUrl = core.getInput('vaultUrl', { required: true });
+  const vaultport = core.getInput('vaultPort', { required: true });
+  const vaultSecure = core.getInput('vaultSecure', { required: false });
+  const vaultToken = core.getInput('vaultToken', { required: false });
+  const vaultTokenRenew = core.getInput('vaultTokenRenew', { requied: false });
+  const vaultSecret = core.getInput('vaultSecret', { required: true });
+  const vaultSkipVerify = core.getInput('vaultSkipVerify', { required: false });
+  const preParse = core.getInput('preParse', { requried: false });
+  const deploymentFile = core.getInput('deploymentFile', { requried: true });
+  const secretsFile = core.getInput('secretsFile', { requried: false });
 
   let deploymentOut
   let secretsOut
