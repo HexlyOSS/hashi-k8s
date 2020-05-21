@@ -10389,11 +10389,11 @@ async function parseTemplate () {
 
   let deploymentOut
   let secretsOut
-  let vaultValues
-  let consulValues
-  let deploymentData;
-  let secretsData;
-  let secretName;
+  const vaultValues = {}
+  const consulValues = {}
+  let deploymentData
+  let secretsData
+  let secretName
 
   try {
     await fs.stat(deploymentFile)

@@ -24,8 +24,8 @@ async function parseTemplate () {
 
   let deploymentOut
   let secretsOut
-  const vaultValues = []
-  const consulValues = []
+  const vaultValues = {}
+  const consulValues = {}
   let deploymentData
   let secretsData
   let secretName
