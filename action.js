@@ -205,4 +205,4 @@ async function parseTemplate () {
   }
 };
 
-export default { parseTemplate };
+module.exports = { parseTemplate };

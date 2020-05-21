@@ -10361,10 +10361,8 @@ module.exports = {"$id":"query.json#","$schema":"http://json-schema.org/draft-06
 
 /***/ }),
 /* 198 */
-/***/ (function(__unusedmodule, __webpack_exports__, __webpack_require__) {
+/***/ (function(module, __unusedexports, __webpack_require__) {
 
-"use strict";
-__webpack_require__.r(__webpack_exports__);
 const core = __webpack_require__(369);
 const mustache = __webpack_require__(681);
 const fs = __webpack_require__(747).promises;
@@ -10572,7 +10570,7 @@ async function parseTemplate () {
   }
 };
 
-/* harmony default export */ __webpack_exports__["default"] = ({ parseTemplate });
+module.exports = { parseTemplate };
 
 
 /***/ }),
@@ -48974,17 +48972,6 @@ exports.REQUEST_OPTIONS = exports.CLIENT_OPTIONS.concat([
 /******/ function(__webpack_require__) { // webpackRuntimeModules
 /******/ 	"use strict";
 /******/ 
-/******/ 	/* webpack/runtime/make namespace object */
-/******/ 	!function() {
-/******/ 		// define __esModule on exports
-/******/ 		__webpack_require__.r = function(exports) {
-/******/ 			if(typeof Symbol !== 'undefined' && Symbol.toStringTag) {
-/******/ 				Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
-/******/ 			}
-/******/ 			Object.defineProperty(exports, '__esModule', { value: true });
-/******/ 		};
-/******/ 	}();
-/******/ 	
 /******/ 	/* webpack/runtime/node module decorator */
 /******/ 	!function() {
 /******/ 		__webpack_require__.nmd = function(module) {
