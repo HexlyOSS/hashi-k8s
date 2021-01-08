@@ -11,12 +11,12 @@ async function parseTemplate () {
   const consulToken = core.getInput('consulToken', { required: false });
   const consulKey = core.getInput('consulKey', { required: true });
   const consulCA = core.getInput('consulCa', { require: false });
-  const vaultUrl = core.getInput('vaultUrl', { required: true });
-  const vaultport = core.getInput('vaultPort', { required: true });
+  const vaultUrl = core.getInput('vaultUrl', { required: false });
+  const vaultport = core.getInput('vaultPort', { required: false });
   const vaultSecure = core.getInput('vaultSecure', { required: false });
   const vaultToken = core.getInput('vaultToken', { required: false });
   const vaultTokenRenew = core.getInput('vaultTokenRenew', { requied: false });
-  const vaultSecret = core.getInput('vaultSecret', { required: true });
+  const vaultSecret = core.getInput('vaultSecret', { required: false });
   const vaultSkipVerify = core.getInput('vaultSkipVerify', { required: false });
   const preParse = core.getInput('preParse', { requried: false });
   const deploymentFile = core.getInput('deploymentFile', { requried: true });
