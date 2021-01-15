@@ -19,7 +19,7 @@ inputs:
     required: false
     default: 'dc1'
   consulKey:
-    description: 'Consul key path to use'
+    description: 'Consul key path to use. Comma separated for list.'
     required: true
   consulToken:
     description: 'Consul Token to use for accessing the index'
