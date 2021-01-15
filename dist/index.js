@@ -10418,16 +10418,20 @@ async function parseTemplate () {
   });
 
   try {
-    console.log(`getting key values from consul for ${consulKey}`);
+    console.log('getting key values from consul');
+    const paths = consulKey.split(',')
 
-    const keys = await consul.kv.get({ key: consulKey, recurse: true });
-    for (const key of keys) {
-      if (key.Key.slice(-1) === '/') {
-        continue;
+    paths.forEach(async path => {
+      console.log(`key: ${path}`);
+      const keys = await consul.kv.get({ key: path, recurse: true });
+      for (const key of keys) {
+        if (key.Key.slice(-1) === '/') {
+          continue;
+        }
+        const keySplit = key.Key.split('/');
+        consulValues[keySplit[keySplit.length - 1]] = key.Value;
       }
-      const keySplit = key.Key.split('/');
-      consulValues[keySplit[keySplit.length - 1]] = key.Value;
-    }
+    })
   } catch (e) {
     console.log(`trouble getting values from consul (${e.message})`);
     throw e;
