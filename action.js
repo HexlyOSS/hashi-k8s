@@ -9,7 +9,7 @@ async function parseTemplate () {
   const consulSecure = core.getInput('consulSecure', { required: false });
   const consulDatacenter = core.getInput('consulDatacenter', { required: false });
   const consulToken = core.getInput('consulToken', { required: false });
-  const consulKeys = core.getInput('consulKey', { required: true });
+  const consulKeys = core.getInput('consulKeys', { required: true });
   const consulCA = core.getInput('consulCa', { require: false });
   const vaultUrl = core.getInput('vaultUrl', { required: false });
   const vaultport = core.getInput('vaultPort', { required: false });
@@ -18,7 +18,7 @@ async function parseTemplate () {
   const vaultTokenRenew = core.getInput('vaultTokenRenew', { requied: false });
   const vaultSecrets = core.getInput('vaultSecrets', { required: false });
   const vaultSkipVerify = core.getInput('vaultSkipVerify', { required: false });
-  
+
   let consulFiles
   let vaultFiles
 
