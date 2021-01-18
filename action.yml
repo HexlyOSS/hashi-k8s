@@ -20,7 +20,9 @@ inputs:
     default: 'dc1'
   consulKeys:
     description: 'Consul key path to use for each file.'
-    required: true
+  consulKey:
+    description: 'Consul key path to use. Comma separated for list.'
+    required: false
   consulToken:
     description: 'Consul Token to use for accessing the index'
     required: false

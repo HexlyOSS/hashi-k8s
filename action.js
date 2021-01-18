@@ -18,16 +18,7 @@ async function parseTemplate () {
   const vaultTokenRenew = core.getInput('vaultTokenRenew', { requied: false });
   const vaultSecrets = core.getInput('vaultSecrets', { required: false });
   const vaultSkipVerify = core.getInput('vaultSkipVerify', { required: false });
-  // const preParse = core.getInput('preParse', { requried: false });
-  // const deploymentFile = core.getInput('deploymentFile', { requried: true });
-  // const secretsFile = core.getInput('secretsFile', { requried: false });
-
-  // let secretsOut
-  // const vaultValues = {}
-  // const consulValues = {}
-  // let deploymentData
-  // let secretsData
-  // let secretName
+  
   let consulFiles
   let vaultFiles
 
