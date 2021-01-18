@@ -76,7 +76,7 @@ Custom CA certificate for consul service. Default `none`.
 
 Consul datacenter to use. Default `dc1`.
 
-### consulKey
+### consulKeys
 
 **Required** Key path to use - the root to look for keys under. This can be a comma separated list of paths:
 
@@ -92,13 +92,40 @@ env:
     value: 'consul_value'
 ```
 
+An array of maps indicating the files to parse with their associated keys and preParse values:
+
+```json
+  [
+    {
+      "filePath": "/path/to/file",
+      "consulKeys": ["consul/keys/","to/parse/"],
+      "preParse": {
+        "key": "value"
+      },
+      "vaultSecrets": ["", ""]
+    }
+  ]
+```
+
+`filePath` is relative to the src directory.
+
+`consulKeys` is an array of paths to look for in consul. All the key/value pairs at the indicated location will be added to the file under the `yamlPath` specified.
+
+`preParse` is a map of values that will be applied to the file using `mustache.js`
+
+`yamlPath` is the path within the k8s yaml that you want the consul keys to be added to
+
+`vaultSecrets` reference to the vault secrets you want to be included in the yaml path
+
 ### consulToken
 
 Consul ACL token to use if required. Default `none`.
 
 ### deploymentFile
 
-**Required** Path to depoloyment yaml file to parse.
+**Depreciated** - use `consulKeys`
+
+Path to depoloyment yaml file to parse.
 
 ### vaultUrl
 
@@ -124,15 +151,43 @@ Vault token to use.  Default `none`.
 
 Attempt to renew the token after use. Default `false`.
 
+### vaultSecrets
+
+An array of maps indicating the files to parse with their associated keys and preParse values:
+
+```json
+  [
+    {
+      "filePath": "/path/to/file",
+      "vaultSecrets": ["consul/keys/","to/parse/"],
+      "preParse": {
+        "key": "value"
+      }
+    }
+  ]
+```
+
+`filePath` is relative to the src directory.
+
+`vaultSecrets` is an array of paths to look for in vault. All the key/value pairs at the indicated location will be added to the secrets file under the `data` section.
+
+`preParse` is a map of values that will be applied to the file using `mustache.js`
+
 ### vaultSecret
 
-**Required** Secret (path) in vault to look for values under.
+**Depriciated** - use `vaultSecrets`
+
+Secret (path) in vault to look for values under.
 
 ### secretsFile
+
+**Depriciated** - use `vaultSecrets`
 
 Required if vault data is needed. Path to secrets yaml file to parse.
 
 ### preParse
+
+**Depreciated** - use `consulKeys`
 
 Values to be used to pre-parse the yaml files. Default `none`.
 
