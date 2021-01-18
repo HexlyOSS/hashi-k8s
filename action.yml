@@ -26,10 +26,10 @@ inputs:
     required: false
   vaultUrl:
     description: 'Vault address'
-    reqiured: true
+    reqiured: false
   vaultPort:
     description: 'Vault Port'
-    required: true
+    required: false
   vaultSecure:
     description: 'Use HTTPS for agent communication'
     required: false
@@ -40,7 +40,10 @@ inputs:
     default: false
   vaultSecret:
     description: 'Vault secret path to use'
-    required: true
+    required: false
+  vaultSecrets:
+    description: 'Vault secret path to use'
+    required: false
   vaultToken:
     description: 'Vault Token to use for accessing the secret'
     required: false
@@ -53,10 +56,10 @@ inputs:
     required: false
   deploymentFile:
     description: 'Path to the deployment.yaml file'
-    required: true
+    required: false
   secretsFile:
     description: 'Path to the secrets.yaml file'
-    required: true
+    required: false
 runs:
   using: 'node12'
   main: 'dist/index.js'
