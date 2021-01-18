@@ -78,21 +78,7 @@ Consul datacenter to use. Default `dc1`.
 
 ### consulKeys
 
-**Required** Key path to use - the root to look for keys under. This can be a comma separated list of paths:
-
-```
-"prod/example-service/,prod/common-config/"
-```
-
-These keys will all be added to the deployement config as env vars under the `keyname`. For example, if there is a key with the name `NATS_CLUSTER` it will be added to the deployment as:
-
-```yaml
-env:
-  - name: 'NATS_CLUSTER'
-    value: 'consul_value'
-```
-
-An array of maps indicating the files to parse with their associated keys and preParse values:
+**Required** An array of maps indicating the files to parse with their associated keys and preParse values:
 
 ```json
   [
@@ -112,8 +98,6 @@ An array of maps indicating the files to parse with their associated keys and pr
 `consulKeys` is an array of paths to look for in consul. All the key/value pairs at the indicated location will be added to the file under the `yamlPath` specified.
 
 `preParse` is a map of values that will be applied to the file using `mustache.js`
-
-`yamlPath` is the path within the k8s yaml that you want the consul keys to be added to
 
 `vaultSecrets` reference to the vault secrets you want to be included in the yaml path
 
