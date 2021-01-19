@@ -10424,7 +10424,7 @@ async function parseTemplate () {
         return
       }
 
-      consulFile.consulValues = {}
+      const consulValues = {}
       consulFile.consulKeys.forEach(async path => {
         console.log(`getting key vaules from consul at path ${path}`)
 
@@ -10434,10 +10434,10 @@ async function parseTemplate () {
             continue;
           }
           const keySplit = key.Key.split('/');
-          consulFile.consulValues[keySplit[keySplit.length - 1]] = key.Value;
+          consulValues[keySplit[keySplit.length - 1]] = key.Value;
         }
       })
-      consulFile.consulKeys = new Map([...consulFile.consulKeys].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1)))
+      if (consulKeys.length > 0) { consulFile.consulKeys = new Map([...consulKeys].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1))) }
     })
   } catch (e) {
     console.log(`trouble getting values from consul (${e.message})`);
@@ -10459,26 +10459,26 @@ async function parseTemplate () {
       endpoint: `${vaultSecure ? 'https://' : 'http://'}${vaultUrl}:${vaultport}`
     });
 
-    try {
-      vaultFiles.forEach(async vaultFile => {
-        vaultFile.vaultValues = {}
+    vaultFiles.forEach(async vaultFile => {
+      try {
+        const vaultValues = {}
         vaultFile.vaultSecrets.forEach(async path => {
           console.log(`getting secret values from vault at path ${path}`)
 
           const keyList = await vault.list(path);
           for (const key of keyList.data.keys) {
             const keyValue = await vault.read(`${path}/${key}`);
-            vaultFile.vaultValues[key] = Buffer.from(keyValue.data.value).toString('base64');
+            vaultValues[key] = Buffer.from(keyValue.data.value).toString('base64');
           }
         })
-        console.log(vaultFile.vaultValues)
+        console.log(vaultValues)
         // sort
-        vaultFile.vaultValues = new Map([...vaultFile.vaultValues].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1)))
-      })
-    } catch (e) {
-      console.log(`trouble getting values from vault ${e.message}`);
-      throw e;
-    }
+        if (vaultValues.length > 0) { vaultFile.vaultValues = new Map([...vaultValues].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1))) }
+      } catch (e) {
+        console.log(`trouble getting values from vault ${e.message}`);
+        throw e;
+      }
+    })
 
     console.log('sucessfully pulled values from vault')
 
@@ -10550,10 +10550,9 @@ async function parseTemplate () {
       console.log(`${consulFile.filePath}`)
 
       const deploymentYaml = await yaml.safeLoad(consulFile.fileData)
-      console.log(deploymentYaml)
-      // if (deploymentYaml.kind !== 'Deployment') {
-      //   throw new Error('only Deployments supported')
-      // }
+      if (deploymentYaml.kind !== 'Deployment') {
+        throw new Error('only Deployments supported')
+      }
 
       const containers = deploymentYaml.spec.template.spec.containers || []
       if (containers.length === 0) throw new Error('no containers in deployment')
