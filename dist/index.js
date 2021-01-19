@@ -10422,15 +10422,17 @@ async function parseTemplate () {
 
   try {
     consulFiles.forEach(async consulFile => {
+      console.log('getting values for the consul file', consulFile)
       if (!consulFile.consulKeys) {
         return
       }
 
       const consulValues = []
-      consulFile.consulKeys.forEach(async path => {
+      await consulFile.consulKeys.forEach(async path => {
         console.log(`getting key vaules from consul at path ${path}`)
 
         const keys = await consul.kv.get({ key: path, recurse: true });
+        console.log('keys', keys)
         for (const key of keys) {
           if (key.Key.slice(-1) === '/') {
             continue;
@@ -10464,8 +10466,8 @@ async function parseTemplate () {
     });
 
     vaultFiles.forEach(async vaultFile => {
+      const vaultValues = {}
       try {
-        const vaultValues = []
         vaultFile.vaultSecrets.forEach(async path => {
           console.log(`getting secret values from vault at path ${path}`)
 
@@ -10475,17 +10477,16 @@ async function parseTemplate () {
             const keyValue = await vault.read(`${path}/${key}`);
             vaultValues[key] = Buffer.from(keyValue.data.value).toString('base64');
           }
-          console.log('inside foreach vault vaules', vaultValues)
         })
-        console.log('outside foreach vault vaules', vaultValues)
         // sort
         // if (vaultValues.length > 0) { vaultFile.vaultValues = new Map([...vaultValues].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1))) }
       } catch (e) {
         console.log(`trouble getting values from vault ${e.message}`);
         throw e;
       }
+      console.log('outside foreach vault vaules', vaultValues)
+      vaultFile.vaultValues = vaultValues
     })
-
     console.log('sucessfully pulled values from vault')
 
     if (vaultTokenRenew) {
