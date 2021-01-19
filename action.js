@@ -27,7 +27,7 @@ async function parseTemplate () {
     throw new Error('no files provided')
   }
 
-  consulFiles = consulFiles.map(async cf => {
+  consulFiles = await consulFiles.map(async cf => {
     let outFile, fileData
     try {
       await fs.stat(cf.filePath)
@@ -47,7 +47,7 @@ async function parseTemplate () {
   console.log(consulFiles)
 
   if (vaultSecrets) {
-    vaultFiles = JSON.parse(vaultSecrets).map(async vf => {
+    vaultFiles = await JSON.parse(vaultSecrets).map(async vf => {
       let outFile, fileData
       try {
         await fs.stat(vf.filePath)
@@ -81,7 +81,7 @@ async function parseTemplate () {
     promisify: true
   });
 
-  consulFiles = consulFiles.map(async consulFile => {
+  consulFiles = await consulFiles.map(async consulFile => {
     console.log('getting values for the consul file', consulFile)
     if (!consulFile.consulKeys) {
       return consulFile
@@ -140,7 +140,7 @@ async function parseTemplate () {
       endpoint: `${vaultSecure ? 'https://' : 'http://'}${vaultUrl}:${vaultport}`
     });
 
-    vaultFiles = vaultFiles.map(async vaultFile => {
+    vaultFiles = await vaultFiles.map(async vaultFile => {
       try {
         const vals = await loadVaultValues({ vault, paths: vaultFile.vaultSecrets })
         console.log('got vault vals', vals)
