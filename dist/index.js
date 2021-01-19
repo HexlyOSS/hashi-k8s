@@ -10373,12 +10373,12 @@ async function parseTemplate () {
   // let consulFiles
   let vaultFiles
 
-  const consulFiles = JSON.parse(consulKeys)
+  let consulFiles = JSON.parse(consulKeys)
   if (consulFiles.length === 0) {
     throw new Error('no files provided')
   }
 
-  consulFiles.forEach(async cf => {
+  consulFiles = consulFiles.map(async cf => {
     let outFile, fileData
     try {
       await fs.stat(cf.filePath)
@@ -10391,14 +10391,14 @@ async function parseTemplate () {
 
     cf.outFile = outFile
     cf.fileData = fileData
+
+    return cf
   })
 
   console.log(consulFiles)
 
   if (vaultSecrets) {
-    vaultFiles = JSON.parse(vaultSecrets)
-
-    vaultFiles.forEach(async vf => {
+    vaultFiles = JSON.parse(vaultSecrets).map(async vf => {
       let outFile, fileData
       try {
         await fs.stat(vf.filePath)
@@ -10411,6 +10411,8 @@ async function parseTemplate () {
 
       vf.outFile = outFile
       vf.fileData = fileData
+
+      return vf
     })
   }
 
@@ -10430,19 +10432,22 @@ async function parseTemplate () {
     promisify: true
   });
 
-  consulFiles.forEach(async consulFile => {
+  consulFiles = consulFiles.map(async consulFile => {
     console.log('getting values for the consul file', consulFile)
     if (!consulFile.consulKeys) {
-      return
+      return consulFile
     }
 
     try {
       const vals = await loadConsulValues({ consul, paths: consulFile.consulKeys })
+      console.log('got consul vals', vals)
       consulFile.consulValues = vals.data
     } catch (e) {
       console.log(`trouble getting values from consul (${e.message})`);
       throw e;
     }
+
+    return consulFile
     // const consulValues = {}
     // consulFile.consulValues = {}
     // try {
@@ -10486,15 +10491,17 @@ async function parseTemplate () {
       endpoint: `${vaultSecure ? 'https://' : 'http://'}${vaultUrl}:${vaultport}`
     });
 
-    vaultFiles.forEach(async vaultFile => {
+    vaultFiles = vaultFiles.map(async vaultFile => {
       try {
         const vals = await loadVaultValues({ vault, paths: vaultFile.vaultSecrets })
+        console.log('got vault vals', vals)
         vaultFile.vaultValues = vals.data
       } catch (e) {
         console.log(`trouble getting values from consul (${e.message})`);
         throw e;
       }
 
+      return vaultFile
       //   const vaultValues = {}
       //   try {
       //     console.log('is consulValues declared?', vaultValues, { vaultFile })
@@ -10534,11 +10541,11 @@ async function parseTemplate () {
 
   // preParse the files if necessary
   console.log('pre-parsing templates with provided values')
-  consulFiles.forEach(consulFile => {
+  consulFiles.forEach((consulFile, index) => {
     if (consulFile.preParse) {
       console.log(`${consulFile.filePath}`)
       try {
-        consulFile.fileData = mustache.render(consulFile.fileData, consulFile.preParse)
+        consulFiles[index].fileData = mustache.render(consulFile.fileData, consulFile.preParse)
       } catch (e) {
         console.log(`trouble pre-parsing files (${e.message})`)
         throw e
@@ -10547,11 +10554,11 @@ async function parseTemplate () {
   })
 
   if (vaultFiles) {
-    vaultFiles.forEach(vaultFile => {
+    vaultFiles.forEach((vaultFile, index) => {
       console.log(`${vaultFile.filePath}`)
       if (vaultFile.preParse) {
         try {
-          vaultFile.fileData = mustache.render(vaultFile.fileData, vaultFile.preParse)
+          vaultFiles[index].fileData = mustache.render(vaultFile.fileData, vaultFile.preParse)
         } catch (e) {
           console.log(`trouble pre-parsing files (${e.message})`)
           throw e
@@ -10564,12 +10571,12 @@ async function parseTemplate () {
   if (vaultFiles) {
     console.log('building secrets data')
     try {
-      vaultFiles.forEach(async vaultFile => {
+      vaultFiles.forEach(async (vaultFile, index) => {
         console.log(vaultFile.filePath)
         const secretYaml = await yaml.safeLoad(vaultFile.fileData)
         secretYaml.data = vaultFile.vaultValues
-        vaultFile.secretName = secretYaml.metadata.name
-        vaultFile.fileData = await yaml.safeDump(secretYaml)
+        vaultFiles[index].secretName = secretYaml.metadata.name
+        vaultFiles[index].fileData = await yaml.safeDump(secretYaml)
       })
     } catch (e) {
       console.log(`trouble building secrets file (${e.message})`)
@@ -10580,7 +10587,7 @@ async function parseTemplate () {
   // Build the consul files
   console.log('building consul data')
   try {
-    consulFiles.forEach(async consulFile => {
+    consulFiles.forEach(async (consulFile, index) => {
       // if we didn't grab any values from consul continue
       if (!consulFile.consulValues || consulFile.consulValues.length === 0) {
         return
@@ -10630,7 +10637,7 @@ async function parseTemplate () {
         container.env.push(...env)
       })
 
-      consulFile.fileData = await yaml.safeDump(deploymentYaml)
+      consulFiles[index].fileData = await yaml.safeDump(deploymentYaml)
     })
   } catch (e) {
     console.log(`trouble building consul file (${e.message})`)
