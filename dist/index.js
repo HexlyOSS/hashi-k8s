@@ -10424,7 +10424,7 @@ async function parseTemplate () {
         return
       }
 
-      const consulValues = {}
+      const consulValues = []
       consulFile.consulKeys.forEach(async path => {
         console.log(`getting key vaules from consul at path ${path}`)
 
@@ -10461,7 +10461,7 @@ async function parseTemplate () {
 
     vaultFiles.forEach(async vaultFile => {
       try {
-        const vaultValues = {}
+        const vaultValues = []
         vaultFile.vaultSecrets.forEach(async path => {
           console.log(`getting secret values from vault at path ${path}`)
 
