@@ -19,42 +19,38 @@ async function parseTemplate () {
   const vaultSecrets = core.getInput('vaultSecrets', { required: false });
   const vaultSkipVerify = core.getInput('vaultSkipVerify', { required: false });
 
-  let consulFiles
+  // let consulFiles
   let vaultFiles
 
-  try {
-    consulFiles = JSON.parse(consulKeys)
-    if (consulFiles.length === 0) {
-      throw new Error('no files provided')
-    }
+  const consulFiles = JSON.parse(consulKeys)
+  if (consulFiles.length === 0) {
+    throw new Error('no files provided')
+  }
 
-    consulFiles.forEach(async consulFile => {
+  consulFiles.forEach(async consulFile => {
+    try {
       await fs.stat(consulFile.filePath)
       consulFile.outFile = `${consulFile.filePath}.parsed`
       consulFile.fileData = await fs.readFile(consulFile.filePath, 'utf-8')
-    })
-  } catch (e) {
-    console.log(`failed to parse consulKeys input (${e.message})`)
-    throw e
-  }
-
-  console.log('consul files', consulFiles)
+    } catch (e) {
+      console.log(`failed to parse consulKeys input (${e.message})`)
+      throw e
+    }
+  })
 
   if (vaultSecrets) {
-    try {
-      vaultFiles = JSON.parse(vaultSecrets)
+    vaultFiles = JSON.parse(vaultSecrets)
 
-      vaultFiles.forEach(async vaultFile => {
+    vaultFiles.forEach(async vaultFile => {
+      try {
         await fs.stat(vaultFile.filePath)
         vaultFile.outFile = `${vaultFile.filePath}.parsed`
         vaultFile.fileData = await fs.readFile(vaultFile.filePath, 'utf-8')
-      })
-    } catch (e) {
-      console.log(`failed to parse vaultSecrets input (${e.message})`)
-      throw e;
-    }
-
-    console.log('vault files', vaultFiles)
+      } catch (e) {
+        console.log(`failed to parse vaultSecrets input (${e.message})`)
+        throw e;
+      }
+    })
   }
 
   // Load the consul data
