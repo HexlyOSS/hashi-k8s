@@ -33,11 +33,12 @@ async function parseTemplate () {
       consulFile.outFile = `${consulFile.filePath}.parsed`
       consulFile.fileData = await fs.readFile(consulFile.filePath, 'utf-8')
     })
-    console.log('consul files', consulFiles)
   } catch (e) {
     console.log(`failed to parse consulKeys input (${e.message})`)
     throw e
   }
+
+  console.log('consul files', consulFiles)
 
   if (vaultSecrets) {
     try {
@@ -48,11 +49,12 @@ async function parseTemplate () {
         vaultFile.outFile = `${vaultFile.filePath}.parsed`
         vaultFile.fileData = await fs.readFile(vaultFile.filePath, 'utf-8')
       })
-      console.log('vault files', vaultFiles)
     } catch (e) {
       console.log(`failed to parse vaultSecrets input (${e.message})`)
       throw e;
     }
+
+    console.log('vault files', vaultFiles)
   }
 
   // Load the consul data
@@ -69,15 +71,16 @@ async function parseTemplate () {
     promisify: true
   });
 
-  try {
-    consulFiles.forEach(async consulFile => {
-      console.log('getting values for the consul file', consulFile)
-      if (!consulFile.consulKeys) {
-        return
-      }
+  consulFiles.forEach(async consulFile => {
+    console.log('getting values for the consul file', consulFile)
+    if (!consulFile.consulKeys) {
+      return
+    }
 
-      const consulValues = []
-      await consulFile.consulKeys.forEach(async path => {
+    let consulValues
+    try {
+      let consulVals
+      consulFile.consulKeys.forEach(async path => {
         console.log(`getting key vaules from consul at path ${path}`)
 
         const keys = await consul.kv.get({ key: path, recurse: true });
@@ -87,17 +90,20 @@ async function parseTemplate () {
             continue;
           }
           const keySplit = key.Key.split('/');
-          consulValues[keySplit[keySplit.length - 1]] = key.Value;
+          consulVals[keySplit[keySplit.length - 1]] = key.Value;
         }
-        console.log('inside foreach consul values', consulValues)
+        console.log('inside foreach consul values', consulVals)
+        consulValues = consulVals
       })
-      console.log('outside foreach consul values', consulValues)
-      // if (consulKeys.length > 0) { consulFile.consulKeys = new Map([...consulKeys].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1))) }
-    })
-  } catch (e) {
-    console.log(`trouble getting values from consul (${e.message})`);
-    throw e;
-  }
+    } catch (e) {
+      console.log(`trouble getting values from consul (${e.message})`);
+      throw e;
+    }
+
+    console.log('outside foreach consul values', consulValues)
+    consulFile.consulValues = consulValues
+    // if (consulKeys.length > 0) { consulFile.consulKeys = new Map([...consulKeys].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1))) }
+  })
 
   console.log('sucessfully pulled values from consul')
 
@@ -115,8 +121,9 @@ async function parseTemplate () {
     });
 
     vaultFiles.forEach(async vaultFile => {
-      const vaultValues = {}
+      let collectedVaultValues
       try {
+        let vaultVals
         vaultFile.vaultSecrets.forEach(async path => {
           console.log(`getting secret values from vault at path ${path}`)
 
@@ -124,17 +131,18 @@ async function parseTemplate () {
           console.log('keylist', keyList)
           for (const key of keyList.data.keys) {
             const keyValue = await vault.read(`${path}/${key}`);
-            vaultValues[key] = Buffer.from(keyValue.data.value).toString('base64');
+            vaultVals[key] = Buffer.from(keyValue.data.value).toString('base64');
           }
         })
+        collectedVaultValues = vaultVals
         // sort
         // if (vaultValues.length > 0) { vaultFile.vaultValues = new Map([...vaultValues].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1))) }
       } catch (e) {
         console.log(`trouble getting values from vault ${e.message}`);
         throw e;
       }
-      console.log('outside foreach vault vaules', vaultValues)
-      vaultFile.vaultValues = vaultValues
+      console.log('outside foreach vault vaules', collectedVaultValues)
+      vaultFile.vaultValues = collectedVaultValues
     })
     console.log('sucessfully pulled values from vault')
 
