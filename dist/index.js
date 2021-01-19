@@ -10437,6 +10437,7 @@ async function parseTemplate () {
           consulFile.consulValues[keySplit[keySplit.length - 1]] = key.Value;
         }
       })
+      consulFile.consulKeys = new Map([...consulFile.consulKeys].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1)))
     })
   } catch (e) {
     console.log(`trouble getting values from consul (${e.message})`);
@@ -10470,6 +10471,9 @@ async function parseTemplate () {
             vaultFile.vaultValues[key] = Buffer.from(keyValue.data.value).toString('base64');
           }
         })
+        console.log(vaultFile.vaultValues)
+        // sort
+        vaultFile.vaultValues = new Map([...vaultFile.vaultValues].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1)))
       })
     } catch (e) {
       console.log(`trouble getting values from vault ${e.message}`);
@@ -10546,9 +10550,10 @@ async function parseTemplate () {
       console.log(`${consulFile.filePath}`)
 
       const deploymentYaml = await yaml.safeLoad(consulFile.fileData)
-      if (deploymentYaml.kind !== 'Deployment') {
-        throw new Error('only Deployments supported')
-      }
+      console.log(deploymentYaml)
+      // if (deploymentYaml.kind !== 'Deployment') {
+      //   throw new Error('only Deployments supported')
+      // }
 
       const containers = deploymentYaml.spec.template.spec.containers || []
       if (containers.length === 0) throw new Error('no containers in deployment')
