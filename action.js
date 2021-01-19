@@ -78,6 +78,7 @@ async function parseTemplate () {
     }
 
     const consulValues = {}
+    consulFile.consulValues = {}
     try {
       console.log('is consulValues declared?', consulValues, { consulFile })
 
@@ -92,6 +93,7 @@ async function parseTemplate () {
           }
           const keySplit = key.Key.split('/');
           consulValues[keySplit[keySplit.length - 1]] = key.Value;
+          consulFile.consulValues[keySplit[keySplit.length - 1]] = key.Value;
         }
         console.log('inside foreach consul values', consulValues)
       })
@@ -100,8 +102,8 @@ async function parseTemplate () {
       throw e;
     }
 
-    console.log('outside foreach consul values', consulValues)
-    consulFile.consulValues = consulValues
+    console.log('outside foreach consul values', consulValues, consulFile.consulValues)
+    // consulFile.consulValues = consulValues
     // if (consulKeys.length > 0) { consulFile.consulKeys = new Map([...consulKeys].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1))) }
   })
 
