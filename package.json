@@ -1,6 +1,6 @@
 {
   "name": "hashi-k8s",
-  "version": "0.0.1",
+  "version": "1.11.0",
   "description": "Github action to build k8s deployment/secrets from consul and vault",
   "main": "dist/index.js",
   "scripts": {
