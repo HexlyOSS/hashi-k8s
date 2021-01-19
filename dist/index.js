@@ -10490,12 +10490,10 @@ async function parseTemplate () {
   // preParse the files if necessary
   console.log('pre-parsing templates with provided values')
   consulFiles.forEach(consulFile => {
-    console.log({ consulFile })
     if (consulFile.preParse) {
       console.log(`${consulFile.filePath}`)
       try {
-        const preParseValues = JSON.parse(consulFile.preParse)
-        consulFile.fileData = mustache.render(consulFile.fileData, preParseValues)
+        consulFile.fileData = mustache.render(consulFile.fileData, consulFile.preParse)
       } catch (e) {
         console.log(`trouble pre-parsing files (${e.message})`)
         throw e
@@ -10508,8 +10506,7 @@ async function parseTemplate () {
       console.log(`${vaultFile.filePath}`)
       if (vaultFile.preParse) {
         try {
-          const preParseValues = JSON.parse(vaultFile.preParse)
-          vaultFile.fileData = mustache.render(vaultFile.fileData, preParseValues)
+          vaultFile.fileData = mustache.render(vaultFile.fileData, vaultFile.preParse)
         } catch (e) {
           console.log(`trouble pre-parsing files (${e.message})`)
           throw e
