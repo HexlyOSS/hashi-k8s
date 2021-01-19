@@ -27,31 +27,43 @@ async function parseTemplate () {
     throw new Error('no files provided')
   }
 
-  consulFiles.forEach(async consulFile => {
+  consulFiles.forEach(async cf => {
+    let outFile, fileData
     try {
-      await fs.stat(consulFile.filePath)
-      consulFile.outFile = `${consulFile.filePath}.parsed`
-      consulFile.fileData = await fs.readFile(consulFile.filePath, 'utf-8')
+      await fs.stat(cf.filePath)
+      outFile = `${cf.filePath}.parsed`
+      fileData = await fs.readFile(cf.filePath, 'utf-8')
     } catch (e) {
       console.log(`failed to parse consulKeys input (${e.message})`)
       throw e
     }
+
+    cf.outFile = outFile
+    cf.fileData = fileData
   })
+
+  console.log(consulFiles)
 
   if (vaultSecrets) {
     vaultFiles = JSON.parse(vaultSecrets)
 
-    vaultFiles.forEach(async vaultFile => {
+    vaultFiles.forEach(async vf => {
+      let outFile, fileData
       try {
-        await fs.stat(vaultFile.filePath)
-        vaultFile.outFile = `${vaultFile.filePath}.parsed`
-        vaultFile.fileData = await fs.readFile(vaultFile.filePath, 'utf-8')
+        await fs.stat(vf.filePath)
+        outFile = `${vf.filePath}.parsed`
+        fileData = await fs.readFile(vf.filePath, 'utf-8')
       } catch (e) {
         console.log(`failed to parse vaultSecrets input (${e.message})`)
         throw e;
       }
+
+      vf.outFile = outFile
+      vf.fileData = fileData
     })
   }
+
+  console.log(vaultFiles)
 
   // Load the consul data
   console.log('connecting to consul');
@@ -73,37 +85,42 @@ async function parseTemplate () {
       return
     }
 
-    const consulValues = {}
-    consulFile.consulValues = {}
     try {
-      console.log('is consulValues declared?', consulValues, { consulFile })
-
-      consulFile.consulKeys.forEach(async path => {
-        console.log(`getting key vaules from consul at path ${path}`)
-
-        const keys = await consul.kv.get({ key: path, recurse: true });
-        console.log('keys', keys)
-        for (const key of keys) {
-          if (key.Key.slice(-1) === '/') {
-            continue;
-          }
-          const keySplit = key.Key.split('/');
-          consulValues[keySplit[keySplit.length - 1]] = key.Value;
-          consulFile.consulValues[keySplit[keySplit.length - 1]] = key.Value;
-        }
-        console.log('inside foreach consul values', consulValues)
-      })
+      const vals = await loadConsulValues({ consul, paths: consulFile.consulKeys })
+      consulFile.consulValues = vals.data
     } catch (e) {
       console.log(`trouble getting values from consul (${e.message})`);
       throw e;
     }
+    // const consulValues = {}
+    // consulFile.consulValues = {}
+    // try {
+    //   console.log('is consulValues declared?', consulValues, { consulFile })
 
-    console.log('outside foreach consul values', consulValues, consulFile.consulValues)
+    //   consulFile.consulKeys.forEach(async path => {
+    //     console.log(`getting key vaules from consul at path ${path}`)
+
+    //     const keys = await consul.kv.get({ key: path, recurse: true });
+    //     console.log('keys', keys)
+    //     for (const key of keys) {
+    //       if (key.Key.slice(-1) === '/') {
+    //         continue;
+    //       }
+    //       const keySplit = key.Key.split('/');
+    //       consulValues[keySplit[keySplit.length - 1]] = key.Value;
+    //       consulFile.consulValues[keySplit[keySplit.length - 1]] = key.Value;
+    //     }
+    //     console.log('inside foreach consul values', consulValues)
+    //   })
+    // } catch (e) {
+    //   console.log(`trouble getting values from consul (${e.message})`);
+    //   throw e;
+    // }
     // consulFile.consulValues = consulValues
     // if (consulKeys.length > 0) { consulFile.consulKeys = new Map([...consulKeys].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1))) }
   })
 
-  console.log('sucessfully pulled values from consul')
+  console.log('sucessfully pulled values from consul', consulFiles)
 
   // Load the Vault data
   if (vaultFiles) {
@@ -119,30 +136,39 @@ async function parseTemplate () {
     });
 
     vaultFiles.forEach(async vaultFile => {
-      const vaultValues = {}
       try {
-        console.log('is consulValues declared?', vaultValues, { vaultFile })
-
-        vaultFile.vaultSecrets.forEach(async path => {
-          console.log(`getting secret values from vault at path ${path}`)
-
-          const keyList = await vault.list(path);
-          console.log('keylist', keyList)
-          for (const key of keyList.data.keys) {
-            const keyValue = await vault.read(`${path}/${key}`);
-            vaultValues[key] = Buffer.from(keyValue.data.value).toString('base64');
-          }
-        })
-        // sort
-        // if (vaultValues.length > 0) { vaultFile.vaultValues = new Map([...vaultValues].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1))) }
+        const vals = await loadVaultValues({ vault, paths: vaultFile.vaultSecrets })
+        vaultFile.vaultValues = vals.data
       } catch (e) {
-        console.log(`trouble getting values from vault ${e.message}`);
+        console.log(`trouble getting values from consul (${e.message})`);
         throw e;
       }
-      console.log('outside foreach vault vaules', vaultValues)
-      vaultFile.vaultValues = vaultValues
+
+      //   const vaultValues = {}
+      //   try {
+      //     console.log('is consulValues declared?', vaultValues, { vaultFile })
+
+      //     vaultFile.vaultSecrets.forEach(async path => {
+      //       console.log(`getting secret values from vault at path ${path}`)
+
+    //       const keyList = await vault.list(path);
+    //       console.log('keylist', keyList)
+    //       for (const key of keyList.data.keys) {
+    //         const keyValue = await vault.read(`${path}/${key}`);
+    //         vaultValues[key] = Buffer.from(keyValue.data.value).toString('base64');
+    //       }
+    //     })
+    //     // sort
+    //     // if (vaultValues.length > 0) { vaultFile.vaultValues = new Map([...vaultValues].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1))) }
+    //   } catch (e) {
+    //     console.log(`trouble getting values from vault ${e.message}`);
+    //     throw e;
+    //   }
+    //   console.log('outside foreach vault vaules', vaultValues)
+    //   vaultFile.vaultValues = vaultValues
+    // })
+    // console.log('sucessfully pulled values from vault')
     })
-    console.log('sucessfully pulled values from vault')
 
     if (vaultTokenRenew) {
       try {
@@ -287,3 +313,55 @@ async function parseTemplate () {
 };
 
 module.exports = { parseTemplate };
+
+function loadConsulValues ({ consul, paths }) {
+  // eslint-disable-next-line no-async-promise-executor
+  return new Promise(async (resolve, reject) => {
+    const vals = {}
+
+    await paths.forEach(async path => {
+      console.log(`getting key vaules from consul at path ${path}`)
+      try {
+        const keys = await consul.kv.get({ key: path, recurse: true });
+        console.log('keys', keys)
+
+        for (const key of keys) {
+          if (key.Key.slice(-1) === '/') {
+            continue;
+          }
+          const keySplit = key.Key.split('/');
+          vals[keySplit[keySplit.length - 1]] = key.Value;
+        }
+      } catch (e) {
+        reject(new Error(`"unable to fetch consul value (${e.messages})"`))
+      }
+    })
+
+    resolve({ data: vals })
+  })
+}
+
+function loadVaultValues ({ vault, paths }) {
+  // eslint-disable-next-line no-async-promise-executor
+  return new Promise(async (resolve, reject) => {
+    const vals = {}
+
+    await paths.forEach(async path => {
+      console.log(`getting secret values from vault at path ${path}`)
+
+      try {
+        const keyList = await vault.list(path);
+        console.log('keylist', keyList)
+
+        for (const key of keyList.data.keys) {
+          const keyValue = await vault.read(`${path}/${key}`);
+          vals[key] = Buffer.from(keyValue.data.value).toString('base64');
+        }
+      } catch (e) {
+        reject(new Error(`"unable to fetch vault secret (${e.messages})"`))
+      }
+    })
+
+    resolve({ data: vals })
+  })
+}
