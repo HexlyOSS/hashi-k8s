@@ -139,6 +139,7 @@ async function parseTemplate () {
   // preParse the files if necessary
   console.log('pre-parsing templates with provided values')
   consulFiles.forEach(consulFile => {
+    console.log({ consulFile })
     if (consulFile.preParse) {
       console.log(`${consulFile.filePath}`)
       try {
