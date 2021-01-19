@@ -169,31 +169,31 @@ async function parseTemplate () {
   // Build the secrets if there are any
   if (vaultFiles) {
     console.log('building secrets data')
-    vaultFiles.forEach(async vaultFile => {
-      console.log(vaultFile.filePath)
-      try {
-        const secretYaml = await yaml.safeLoad(vaultFiles.fileData)
+    try {
+      vaultFiles.forEach(async vaultFile => {
+        console.log(vaultFile.filePath)
+        const secretYaml = await yaml.safeLoad(vaultFile.fileData)
         secretYaml.data = vaultFile.vaultValues
         vaultFile.secretName = secretYaml.metadata.name
         vaultFile.fileData = await yaml.safeDump(secretYaml)
-      } catch (e) {
-        console.log(`trouble building secrets file (${e.message})`)
-        throw e
-      }
-    })
+      })
+    } catch (e) {
+      console.log(`trouble building secrets file (${e.message})`)
+      throw e
+    }
   }
 
   // Build the consul files
   console.log('building consul data')
-  consulFiles.forEach(async consulFile => {
-    // if we didn't grab any values from consul continue
-    if (!consulFile.consulValues) {
-      return
-    }
+  try {
+    consulFiles.forEach(async consulFile => {
+      // if we didn't grab any values from consul continue
+      if (!consulFile.consulValues || consulFile.consulValues.length === 0) {
+        return
+      }
 
-    console.log(`${consulFile.filePath}`)
+      console.log(`${consulFile.filePath}`)
 
-    try {
       const deploymentYaml = await yaml.safeLoad(consulFile.fileData)
       if (deploymentYaml.kind !== 'Deployment') {
         throw new Error('only Deployments supported')
@@ -237,33 +237,33 @@ async function parseTemplate () {
       })
 
       consulFile.fileData = await yaml.safeDump(deploymentYaml)
-    } catch (e) {
-      console.log(`trouble building consul file (${e.message})`)
-      throw e
-    }
-  })
+    })
+  } catch (e) {
+    console.log(`trouble building consul file (${e.message})`)
+    throw e
+  }
 
   console.log('Writing output files');
-  consulFiles.forEach(async consulFile => {
-    console.log(consulFile.outFile)
-    try {
+  try {
+    consulFiles.forEach(async consulFile => {
+      console.log(consulFile.outFile)
       await fs.writeFile(consulFile.outFile, consulFile.fileData);
+    })
+  } catch (e) {
+    console.log(`trouble writing deployment file (${e.message})`);
+    throw e
+  }
+
+  if (vaultFiles) {
+    try {
+      vaultFiles.forEach(async vaultFile => {
+        console.log(vaultFile.outFile)
+        await fs.writeFile(vaultFile.outFile, vaultFile.fileData);
+      })
     } catch (e) {
       console.log(`trouble writing deployment file (${e.message})`);
       throw e
     }
-  })
-
-  if (vaultFiles) {
-    vaultFiles.forEach(async vaultFile => {
-      console.log(vaultFile.outFile)
-      try {
-        await fs.writeFile(vaultFile.outFile, vaultFile.fileData);
-      } catch (e) {
-        console.log(`trouble writing deployment file (${e.message})`);
-        throw e
-      }
-    })
   }
 
   console.log('finished')
