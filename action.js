@@ -22,46 +22,36 @@ async function parseTemplate () {
   // let consulFiles
   let vaultFiles
 
-  let consulFiles = JSON.parse(consulKeys)
+  const consulFiles = JSON.parse(consulKeys)
   if (consulFiles.length === 0) {
     throw new Error('no files provided')
   }
 
-  consulFiles = await consulFiles.map(async cf => {
-    let outFile, fileData
+  consulFiles.forEach(async (cf, index) => {
     try {
       await fs.stat(cf.filePath)
-      outFile = `${cf.filePath}.parsed`
-      fileData = await fs.readFile(cf.filePath, 'utf-8')
+      consulFiles[index].outFile = `${cf.filePath}.parsed`
+      consulFiles[index].fileData = await fs.readFile(cf.filePath, 'utf-8')
     } catch (e) {
       console.log(`failed to parse consulKeys input (${e.message})`)
       throw e
     }
-
-    cf.outFile = outFile
-    cf.fileData = fileData
-
-    return cf
   })
 
   console.log(consulFiles)
 
   if (vaultSecrets) {
-    vaultFiles = await JSON.parse(vaultSecrets).map(async vf => {
-      let outFile, fileData
+    vaultFiles = await JSON.parse(vaultSecrets)
+
+    vaultFiles.forEach(async (vf, index) => {
       try {
         await fs.stat(vf.filePath)
-        outFile = `${vf.filePath}.parsed`
-        fileData = await fs.readFile(vf.filePath, 'utf-8')
+        vaultFiles[index].outFile = `${vf.filePath}.parsed`
+        vaultFiles[index].fileData = await fs.readFile(vf.filePath, 'utf-8')
       } catch (e) {
         console.log(`failed to parse vaultSecrets input (${e.message})`)
         throw e;
       }
-
-      vf.outFile = outFile
-      vf.fileData = fileData
-
-      return vf
     })
   }
 
@@ -81,22 +71,21 @@ async function parseTemplate () {
     promisify: true
   });
 
-  consulFiles = await consulFiles.map(async consulFile => {
-    console.log('getting values for the consul file', consulFile)
-    if (!consulFile.consulKeys) {
-      return consulFile
+  consulFiles.forEach(async (cf, index) => {
+    console.log('getting values for the consul file', cf)
+    if (!cf.consulKeys) {
+      return cf
     }
 
     try {
-      const vals = await loadConsulValues({ consul, paths: consulFile.consulKeys })
+      const vals = await loadConsulValues({ consul, paths: cf.consulKeys })
       console.log('got consul vals', vals)
-      consulFile.consulValues = vals.data
+      consulFiles[index].consulValues = vals.data
     } catch (e) {
       console.log(`trouble getting values from consul (${e.message})`);
       throw e;
     }
 
-    return consulFile
     // const consulValues = {}
     // consulFile.consulValues = {}
     // try {
@@ -140,17 +129,16 @@ async function parseTemplate () {
       endpoint: `${vaultSecure ? 'https://' : 'http://'}${vaultUrl}:${vaultport}`
     });
 
-    vaultFiles = await vaultFiles.map(async vaultFile => {
+    vaultFiles.forEach(async (vf, index) => {
       try {
-        const vals = await loadVaultValues({ vault, paths: vaultFile.vaultSecrets })
+        const vals = await loadVaultValues({ vault, paths: vf.vaultSecrets })
         console.log('got vault vals', vals)
-        vaultFile.vaultValues = vals.data
+        vaultFiles[index].vaultValues = vals.data
       } catch (e) {
         console.log(`trouble getting values from consul (${e.message})`);
         throw e;
       }
 
-      return vaultFile
       //   const vaultValues = {}
       //   try {
       //     console.log('is consulValues declared?', vaultValues, { vaultFile })
