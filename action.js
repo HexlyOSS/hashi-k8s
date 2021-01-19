@@ -108,9 +108,7 @@ async function parseTemplate () {
 
     try {
       vaultFiles.forEach(async vaultFile => {
-        const paths = vaultFile.vaultSecrets.split(',')
-
-        paths.forEach(async path => {
+        vaultFile.vaultSecrets.forEach(async path => {
           console.log(`getting secret values from vault at path ${path}`)
 
           const keyList = await vault.list(path);
