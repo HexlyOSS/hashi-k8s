@@ -33,6 +33,7 @@ async function parseTemplate () {
       consulFile.outFile = `${consulFile.filePath}.parsed`
       consulFile.fileData = await fs.readFile(consulFile.filePath, 'utf-8')
     })
+    console.log('consul files', consulFiles)
   } catch (e) {
     console.log(`failed to parse consulKeys input (${e.message})`)
     throw e
@@ -47,6 +48,7 @@ async function parseTemplate () {
         vaultFile.outFile = `${vaultFile.filePath}.parsed`
         vaultFile.fileData = await fs.readFile(vaultFile.filePath, 'utf-8')
       })
+      console.log('vault files', vaultFiles)
     } catch (e) {
       console.log(`failed to parse vaultSecrets input (${e.message})`)
       throw e;
@@ -85,8 +87,10 @@ async function parseTemplate () {
           const keySplit = key.Key.split('/');
           consulValues[keySplit[keySplit.length - 1]] = key.Value;
         }
+        console.log('inside foreach consul values', consulValues)
       })
-      if (consulKeys.length > 0) { consulFile.consulKeys = new Map([...consulKeys].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1))) }
+      console.log('outside foreach consul values', consulValues)
+      // if (consulKeys.length > 0) { consulFile.consulKeys = new Map([...consulKeys].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1))) }
     })
   } catch (e) {
     console.log(`trouble getting values from consul (${e.message})`);
@@ -115,14 +119,16 @@ async function parseTemplate () {
           console.log(`getting secret values from vault at path ${path}`)
 
           const keyList = await vault.list(path);
+          console.log('keylist', keyList)
           for (const key of keyList.data.keys) {
             const keyValue = await vault.read(`${path}/${key}`);
             vaultValues[key] = Buffer.from(keyValue.data.value).toString('base64');
           }
+          console.log('inside foreach vault vaules', vaultValues)
         })
-        console.log(vaultValues)
+        console.log('outside foreach vault vaules', vaultValues)
         // sort
-        if (vaultValues.length > 0) { vaultFile.vaultValues = new Map([...vaultValues].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1))) }
+        // if (vaultValues.length > 0) { vaultFile.vaultValues = new Map([...vaultValues].sort((a, b) => (a[1] > b[1] && 1) || (a[1] === b[1] ? 0 : -1))) }
       } catch (e) {
         console.log(`trouble getting values from vault ${e.message}`);
         throw e;
