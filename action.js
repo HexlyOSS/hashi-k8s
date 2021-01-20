@@ -169,6 +169,8 @@ async function parseTemplate () {
         secretYaml.data = vf.vaultValues
 
         vf.secretName = secretYaml.metadata.name
+
+        console.log('vault data', secretYaml.metadata, vf.fileData, vf.vaultValues)
         vf.fileData = await yaml.safeDump(secretYaml)
 
         return vf
@@ -275,7 +277,6 @@ async function loadConsulValues ({ consul, paths }) {
     console.log(`getting key vaules from consul at path ${path}`)
     try {
       const keys = await consul.kv.get({ key: path, recurse: true });
-      console.log('keys', keys)
 
       const vals = {}
       for (const key of keys) {
