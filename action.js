@@ -167,8 +167,6 @@ async function parseTemplate () {
         secretYaml.data = vf.vaultValues
 
         vf.secretName = secretYaml.metadata.name
-
-        console.log('vault data', vf.vaultValues)
         vf.fileData = await yaml.safeDump(secretYaml)
 
         return vf
@@ -193,7 +191,7 @@ async function parseTemplate () {
       const deploymentYaml = await yaml.safeLoad(cf.fileData)
       if (deploymentYaml.kind !== 'Deployment') {
         console.log('only Deployments supported', cf.filePath)
-        return
+        return cf
       }
 
       const containers = deploymentYaml.spec.template.spec.containers || []
@@ -259,7 +257,7 @@ async function parseTemplate () {
         console.log(vf.outFile)
         await fs.writeFile(vf.outFile, vf.fileData);
       } catch (e) {
-        console.log(`trouble writing deployment file (${e.message})`);
+        console.log(`trouble writing secret file (${e.message})`);
         throw e
       }
     })
