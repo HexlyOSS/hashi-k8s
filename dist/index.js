@@ -10372,6 +10372,7 @@ async function parseTemplate () {
 
   // let consulFiles
   let vaultFiles
+  let fileData
 
   const consulFiles = JSON.parse(consulKeys)
   if (consulFiles.length === 0) {
@@ -10381,15 +10382,17 @@ async function parseTemplate () {
   consulFiles.forEach(async (cf, index) => {
     try {
       await fs.stat(cf.filePath)
-      consulFiles[index].outFile = `${cf.filePath}.parsed`
-      consulFiles[index].fileData = await fs.readFile(cf.filePath, 'utf-8')
+      cf.outFile = `${cf.filePath}.parsed`
+      cf.fileData = await fs.readFile(cf.filePath, 'utf-8')
+      fileData = cf.fileData
     } catch (e) {
       console.log(`failed to parse consulKeys input (${e.message})`)
       throw e
     }
+    consulFiles[index] = cf
   })
 
-  console.log(consulFiles)
+  console.log(consulFiles, fileData)
 
   if (vaultSecrets) {
     vaultFiles = await JSON.parse(vaultSecrets)
