@@ -10429,8 +10429,7 @@ async function parseTemplate () {
     }
 
     try {
-      const vals = await loadConsulValues({ consul, paths: cf.consulKeys })
-      cf.consulValues = vals.data
+      cf.consulValues = await loadConsulValues({ consul, paths: cf.consulKeys })
       return cf
     } catch (e) {
       console.log(`trouble getting values from consul (${e.message})`);
@@ -10455,8 +10454,7 @@ async function parseTemplate () {
 
     vaultFiles = await Promise.all(vaultFiles.map(async vf => {
       try {
-        const vals = await loadVaultValues({ vault, paths: vf.vaultSecrets })
-        vf.vaultValues = vals.data
+        vf.vaultValues = await loadVaultValues({ vault, paths: vf.vaultSecrets })
         return vf
       } catch (e) {
         console.log(`trouble getting values from consul (${e.message})`);
@@ -10521,7 +10519,7 @@ async function parseTemplate () {
 
         vf.secretName = secretYaml.metadata.name
 
-        console.log('vault data', secretYaml.metadata, vf.fileData, vf.vaultValues)
+        console.log('vault data', vf.vaultValues)
         vf.fileData = await yaml.safeDump(secretYaml)
 
         return vf
@@ -10624,7 +10622,7 @@ async function parseTemplate () {
 module.exports = { parseTemplate };
 
 async function loadConsulValues ({ consul, paths }) {
-  return await Promise.all(paths.map(async path => {
+  const vals = await Promise.all(paths.map(async path => {
     console.log(`getting key vaules from consul at path ${path}`)
     try {
       const keys = await consul.kv.get({ key: path, recurse: true });
@@ -10643,10 +10641,19 @@ async function loadConsulValues ({ consul, paths }) {
       throw new Error(`"unable to fetch consul value (${e.messages})"`)
     }
   }))
+
+  const merged = {}
+  vals.forEach(val => {
+    Object.entries(val).forEach(([key, value]) => {
+      merged[key] = value
+    })
+  })
+
+  return merged
 }
 
 async function loadVaultValues ({ vault, paths }) {
-  return await Promise.all(paths.map(async path => {
+  const vals = await Promise.all(paths.map(async path => {
     console.log(`getting secret values from vault at path ${path}`)
 
     try {
@@ -10663,6 +10670,15 @@ async function loadVaultValues ({ vault, paths }) {
       throw new Error(`"unable to fetch vault secret (${e.messages})"`)
     }
   }))
+
+  const merged = {}
+  vals.forEach(val => {
+    Object.entries(val).forEach(([key, value]) => {
+      merged[key] = value
+    })
+  })
+
+  return merged
 }
 
 
