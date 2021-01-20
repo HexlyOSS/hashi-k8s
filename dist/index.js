@@ -10370,38 +10370,42 @@ async function parseTemplate () {
   const vaultSecrets = core.getInput('vaultSecrets', { required: false });
   const vaultSkipVerify = core.getInput('vaultSkipVerify', { required: false });
 
-  // let consulFiles
+  let consulFiles
   let vaultFiles
 
-  const consulFiles = JSON.parse(consulKeys)
-  if (consulFiles.length === 0) {
+  const cfParsed = JSON.parse(consulKeys)
+  if (cfParsed.length === 0) {
     throw new Error('no files provided')
   }
 
-  await consulFiles.forEach(async cf => {
+  consulFiles = await Promise.all(cfParsed.map(async cf => {
     try {
       await fs.stat(cf.filePath)
       cf.outFile = `${cf.filePath}.parsed`
       cf.fileData = await fs.readFile(cf.filePath, 'utf-8')
+
+      return cf
     } catch (e) {
       console.log(`failed to parse consulKeys input (${e.message})`)
       throw e
     }
-  })
+  }))
 
   if (vaultSecrets) {
-    vaultFiles = await JSON.parse(vaultSecrets)
+    const vfParsed = await JSON.parse(vaultSecrets)
 
-    await vaultFiles.forEach(async vf => {
+    vaultFiles = await Promise.all(vfParsed.map(async vf => {
       try {
         await fs.stat(vf.filePath)
         vf.outFile = `${vf.filePath}.parsed`
         vf.fileData = await fs.readFile(vf.filePath, 'utf-8')
+
+        return vf
       } catch (e) {
         console.log(`failed to parse vaultSecrets input (${e.message})`)
         throw e;
       }
-    })
+    }))
   }
 
   // Load the consul data
@@ -10418,7 +10422,7 @@ async function parseTemplate () {
     promisify: true
   });
 
-  await consulFiles.forEach(async cf => {
+  consulFiles = await Promise.all(consulFiles.map(async cf => {
     console.log('getting values for the consul file')
     if (!cf.consulKeys) {
       return cf
@@ -10427,11 +10431,12 @@ async function parseTemplate () {
     try {
       const vals = await loadConsulValues({ consul, paths: cf.consulKeys })
       cf.consulValues = vals.data
+      return cf
     } catch (e) {
       console.log(`trouble getting values from consul (${e.message})`);
       throw e;
     }
-  })
+  }))
 
   console.log('sucessfully pulled values from consul')
 
@@ -10448,16 +10453,16 @@ async function parseTemplate () {
       endpoint: `${vaultSecure ? 'https://' : 'http://'}${vaultUrl}:${vaultport}`
     });
 
-    await vaultFiles.forEach(async vf => {
+    vaultFiles = await Promise.all(vaultFiles.map(async vf => {
       try {
         const vals = await loadVaultValues({ vault, paths: vf.vaultSecrets })
-        console.log('got vault vals', vals)
         vf.vaultValues = vals.data
+        return vf
       } catch (e) {
         console.log(`trouble getting values from consul (${e.message})`);
         throw e;
       }
-    })
+    }))
 
     if (vaultTokenRenew) {
       try {
@@ -10472,60 +10477,70 @@ async function parseTemplate () {
 
   // preParse the files if necessary
   console.log('pre-parsing templates with provided values')
-  await consulFiles.forEach(async cf => {
+  consulFiles = await Promise.all(consulFiles.map(async cf => {
     if (cf.preParse) {
       console.log(`${cf.filePath}`)
       try {
         cf.fileData = mustache.render(cf.fileData, cf.preParse)
+        return cf
       } catch (e) {
         console.log(`trouble pre-parsing files (${e.message})`)
         throw e
       }
+    } else {
+      return cf
     }
-  })
+  }))
 
   if (vaultFiles) {
-    await vaultFiles.forEach(async vf => {
+    vaultFiles = await Promise.all(vaultFiles.map(async vf => {
       console.log(`${vf.filePath}`)
       if (vf.preParse) {
         try {
           vf.fileData = mustache.render(vf.fileData, vf.preParse)
+          return vf
         } catch (e) {
           console.log(`trouble pre-parsing files (${e.message})`)
           throw e
         }
+      } else {
+        return vf
       }
-    })
+    }))
   }
 
   // Build the secrets if there are any
   if (vaultFiles) {
     console.log('building secrets data')
-    try {
-      await vaultFiles.forEach(async vf => {
+    vaultFiles = await Promise.all(vaultFiles.map(async vf => {
+      try {
         console.log(vf.filePath)
+
         const secretYaml = await yaml.safeLoad(vf.fileData)
         secretYaml.data = vf.vaultValues
+
         vf.secretName = secretYaml.metadata.name
         vf.fileData = await yaml.safeDump(secretYaml)
-      })
-    } catch (e) {
-      console.log(`trouble building secrets file (${e.message})`)
-      throw e
-    }
+
+        return vf
+      } catch (e) {
+        console.log(`trouble building secrets file (${e.message})`)
+        throw e
+      }
+    }))
   }
 
   // Build the consul files
   console.log('building consul data')
-  try {
-    await consulFiles.forEach(async cf => {
-      // if we didn't grab any values from consul continue
-      if (!cf.consulValues || cf.consulValues.length === 0) {
-        return
-      }
+  consulFiles = await Promise.all(consulFiles.map(async cf => {
+    // if we didn't grab any values from consul continue
+    if (!cf.consulValues || cf.consulValues.length === 0) {
+      return cf
+    }
 
-      console.log(cf.filePath)
+    console.log(cf.filePath)
 
+    try {
       const deploymentYaml = await yaml.safeLoad(cf.fileData)
       if (deploymentYaml.kind !== 'Deployment') {
         console.log('only Deployments supported', cf.filePath)
@@ -10570,33 +10585,35 @@ async function parseTemplate () {
       })
 
       cf.fileData = await yaml.safeDump(deploymentYaml)
-    })
-  } catch (e) {
-    console.log(`trouble building consul file (${e.message})`)
-    throw e
-  }
+
+      return cf
+    } catch (e) {
+      console.log(`trouble building consul file (${e.message})`)
+      throw e
+    }
+  }))
 
   console.log('Writing output files');
-  try {
-    await consulFiles.forEach(async consulFile => {
-      console.log(consulFile.outFile)
-      await fs.writeFile(consulFile.outFile, consulFile.fileData);
-    })
-  } catch (e) {
-    console.log(`trouble writing deployment file (${e.message})`);
-    throw e
-  }
-
-  if (vaultFiles) {
+  await consulFiles.forEach(async cf => {
     try {
-      await vaultFiles.forEach(async vaultFile => {
-        console.log(vaultFile.outFile)
-        await fs.writeFile(vaultFile.outFile, vaultFile.fileData);
-      })
+      console.log(cf.outFile)
+      await fs.writeFile(cf.outFile, cf.fileData);
     } catch (e) {
       console.log(`trouble writing deployment file (${e.message})`);
       throw e
     }
+  })
+
+  if (vaultFiles) {
+    await vaultFiles.forEach(async vf => {
+      try {
+        console.log(vf.outFile)
+        await fs.writeFile(vf.outFile, vf.fileData);
+      } catch (e) {
+        console.log(`trouble writing deployment file (${e.message})`);
+        throw e
+      }
+    })
   }
 
   console.log('finished')
@@ -10605,14 +10622,13 @@ async function parseTemplate () {
 module.exports = { parseTemplate };
 
 async function loadConsulValues ({ consul, paths }) {
-  const vals = {}
-
-  await paths.forEach(async path => {
+  return await Promise.all(paths.map(async path => {
     console.log(`getting key vaules from consul at path ${path}`)
     try {
       const keys = await consul.kv.get({ key: path, recurse: true });
       console.log('keys', keys)
 
+      const vals = {}
       for (const key of keys) {
         if (key.Key.slice(-1) === '/') {
           continue;
@@ -10620,34 +10636,32 @@ async function loadConsulValues ({ consul, paths }) {
         const keySplit = key.Key.split('/');
         vals[keySplit[keySplit.length - 1]] = key.Value;
       }
+
+      return vals
     } catch (e) {
       throw new Error(`"unable to fetch consul value (${e.messages})"`)
     }
-  })
-
-  return vals
+  }))
 }
 
 async function loadVaultValues ({ vault, paths }) {
-  const vals = {}
-
-  await paths.forEach(async path => {
+  return await Promise.all(paths.map(async path => {
     console.log(`getting secret values from vault at path ${path}`)
 
     try {
       const keyList = await vault.list(path);
-      console.log('keylist', keyList)
 
+      const vals = {}
       for (const key of keyList.data.keys) {
         const keyValue = await vault.read(`${path}/${key}`);
         vals[key] = Buffer.from(keyValue.data.value).toString('base64');
       }
+
+      return vals
     } catch (e) {
       throw new Error(`"unable to fetch vault secret (${e.messages})"`)
     }
-  })
-
-  return vals
+  }))
 }
 
 
