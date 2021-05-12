@@ -285,7 +285,8 @@ async function loadConsulValues ({ consul, paths }) {
 
       return vals
     } catch (e) {
-      throw new Error(`"unable to fetch consul value (${e.messages})"`)
+      const message = e.messages || e.message
+      throw new Error(`"unable to fetch consul value (${message})"`)
     }
   }))
 
@@ -314,7 +315,8 @@ async function loadVaultValues ({ vault, paths }) {
 
       return vals
     } catch (e) {
-      throw new Error(`"unable to fetch vault secret (${e.messages})"`)
+      const message = e.messages || e.message
+      throw new Error(`"unable to fetch vault secret (${message})"`)
     }
   }))
 
