@@ -271,11 +271,13 @@ module.exports = { parseTemplate };
 async function loadConsulValues ({ consul, paths }) {
   const vals = await Promise.all(paths.map(async path => {
     console.log(`getting key vaules from consul at path ${path}`)
+    let lastKey = null
     try {
       const keys = await consul.kv.get({ key: path, recurse: true });
 
       const vals = {}
       for (const key of keys) {
+        lastKey = key
         if (key.Key.slice(-1) === '/') {
           continue;
         }
@@ -285,8 +287,8 @@ async function loadConsulValues ({ consul, paths }) {
 
       return vals
     } catch (e) {
-      const message = e.messages || e.message
-      throw new Error(`"unable to fetch consul value (${message})"`)
+      const message = e.messages || e.message || e
+      throw new Error(`"unable to fetch consul value for ${lastKey} (${message})"`)
     }
   }))
 
@@ -315,7 +317,7 @@ async function loadVaultValues ({ vault, paths }) {
 
       return vals
     } catch (e) {
-      const message = e.messages || e.message
+      const message = e.messages || e.message || e
       throw new Error(`"unable to fetch vault secret (${message})"`)
     }
   }))
