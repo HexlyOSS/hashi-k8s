@@ -201,7 +201,12 @@ async function parseTemplate () {
 
       // push the consul values into the env arrya
       Object.entries(cf.consulValues).forEach(([key, value]) => {
-        env.push({ name: key, value: value })
+        const existing = env.find(e => e.name === key)
+        if (existing) {
+          console.log(`Already have a consul key for ${key}`)
+        } else {
+          env.push({ name: key, value: value })
+        }
       })
 
       // if they referenced a vault secret, push it here
@@ -214,15 +219,20 @@ async function parseTemplate () {
         if (!vaultFile) throw new Error(`invalid vault secret reference ${secret}`)
 
         Object.entries(vaultFile.vaultValues).forEach(([key]) => {
-          env.push({
-            name: key,
-            valueFrom: {
-              secretKeyRef: {
-                name: vaultFile.secretName,
-                key: key
+          const existing = env.find(e => e.name === key)
+          if (existing) {
+            console.log(`Already have a vault key for ${key}`)
+          } else {
+            env.push({
+              name: key,
+              valueFrom: {
+                secretKeyRef: {
+                  name: vaultFile.secretName,
+                  key: key
+                }
               }
-            }
-          })
+            })
+          }
         })
       })
 
