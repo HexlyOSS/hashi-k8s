@@ -205,6 +205,7 @@ async function parseTemplate () {
         if (existing) {
           console.log(`Already have a consul key for ${key}`)
         } else {
+          console.log('loading consul value for ' + key)
           env.push({ name: key, value: value })
         }
       })
@@ -223,6 +224,7 @@ async function parseTemplate () {
           if (existing) {
             console.log(`Already have a vault key for ${key}`)
           } else {
+            console.log('loading vault value for ' + key + ' from ' + vaultFile.secretName)
             env.push({
               name: key,
               valueFrom: {
